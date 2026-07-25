@@ -1,0 +1,51 @@
+---
+// src/pages/login.astro — /login page
+import Layout from '../layouts/Layout.astro';
+import AuthShowcase from '../components/react/AuthShowcase';
+import { getSessionFromRequest } from '../lib/db';
+import { getTrendingMovies } from '../lib/tmdb';
+
+// Redirect if already logged in
+const session = getSessionFromRequest(Astro.request);
+if (session) {
+  return Astro.redirect('/profile');
+}
+
+const errorParam = Astro.url.searchParams.get('error');
+const errorMessages: Record<string, string> = {
+  missing_params: 'Authentication failed — missing parameters.',
+  invalid_state: 'Authentication failed — invalid state. Please try again.',
+  auth_error: 'Authentication failed. Please try again.',
+};
+const errorMessage = errorParam ? (errorMessages[errorParam] ?? decodeURIComponent(errorParam)) : null;
+
+// Build showcase slides from trending movies (fallback to Unsplash cinema shots).
+const IMG = 'https://image.tmdb.org/t/p';
+type Slide = { img: string; title: string; tagline: string };
+let slides: Slide[] = [];
+try {
+  const t = await getTrendingMovies('week');
+  slides = t.results
+    .filter((m) => m.backdrop_path || m.poster_path)
+    .slice(0, 4)
+    .map((m: any) => ({
+      img: `${IMG}/w780${m.backdrop_path ?? m.poster_path}`,
+      title: m.title ?? m.name ?? 'Now Trending',
+      tagline: (m.overview ?? '').slice(0, 130),
+    }));
+} catch {
+  // ignore — fallback below
+}
+if (slides.length < 4) {
+  slides = [
+    { img: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=780&q=80', title: 'Cinema, Reimagined', tagline: 'Every blockbuster, indie gem and cult classic — one place.' },
+    { img: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=780&q=80', title: 'Binge Without Limits', tagline: 'Full seasons of the shows everyone is talking about.' },
+    { img: 'https://images.unsplash.com/photo-1524985069026-dd778a71c7b4?w=780&q=80', title: 'In Stunning HD & 4K', tagline: 'Theater-quality picture and sound, right in your browser.' },
+    { img: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=780&q=80', title: 'Watch Anywhere', tagline: 'Desktop, tablet, phone or Smart TV — no app required.' },
+  ];
+}
+---
+
+<Layout title="Sign In — Filmora Movie" noNav={true} noFooter={true} noIndex={true}>
+  <AuthShowcase client:load slides={slides} error={errorMessage} />
+</Layout>

@@ -16,9 +16,29 @@ pnpm-debug.log*
 # environment variables
 .env
 .env.production
+.env.local
+.env.*.local
+
+# Database (SQLite)
+*.db
+*.db-shm
+*.db-wal
+filmora.db
 
 # macOS-specific files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V8
+.Trashes
+ehthumbs.db
+Thumbs.db
 
 # jetbrains setting folder
 .idea/
+
+# VS Code
+.vscode/settings.json
+
+# Vercel
+.vercel

@@ -1,0 +1,104 @@
+---
+// src/pages/appletv.astro — Apple TV+ hub page
+import Layout from '../layouts/Layout.astro';
+import Top10Rail from '../components/Top10Rail.astro';
+import MovieRail from '../components/MovieRail.astro';
+import HeroCarousel from '../components/react/HeroCarousel';
+import { getPlatformPageData } from '../lib/tmdb';
+
+let pageData: Awaited<ReturnType<typeof getPlatformPageData>> | null = null;
+let error: string | null = null;
+try {
+  pageData = await getPlatformPageData('appletv');
+} catch (e) {
+  error = e instanceof Error ? e.message : 'Failed to load';
+}
+
+const heroSlides    = pageData?.heroSlides    ?? [];
+const top10TV       = pageData?.top10TV       ?? [];
+const top10Movies   = pageData?.top10Movies   ?? [];
+const popularTV     = pageData?.popularTV     ?? [];
+const popularMovies = pageData?.popularMovies ?? [];
+
+const ACCENT = '#ffffff';
+---
+
+<Layout title="Apple TV+ — Top 10 & Originals" description="Top shows, Apple Originals and films streaming on Apple TV+.">
+  {heroSlides.length > 0 && (
+    <HeroCarousel client:load slides={heroSlides} label="Apple TV+ Top 10" />
+  )}
+
+  <div class="platform-page">
+    <!-- Brand header -->
+    <div class="container">
+      <div class="platform-brand platform-brand--appletv">
+        <div class="platform-logo-wrap">
+          <!-- Apple logo -->
+          <svg width="30" height="36" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="platform-name">Apple TV+</h1>
+          <p class="platform-desc">Apple Originals, award-winning series &amp; films on Apple TV+</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="platform-sections">
+      {top10TV.length > 0 && (
+        <div data-reveal>
+          <Top10Rail title="Top 10 Series on Apple TV+ Today" items={top10TV} mediaType="tv" accentColor={ACCENT} />
+        </div>
+      )}
+      {top10Movies.length > 0 && (
+        <div data-reveal>
+          <Top10Rail title="Top 10 Movies on Apple TV+ Today" items={top10Movies} mediaType="movie" accentColor={ACCENT} />
+        </div>
+      )}
+      {popularTV.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Popular Series" items={popularTV} mediaType="tv" />
+        </div>
+      )}
+      {popularMovies.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Popular Movies" items={popularMovies} mediaType="movie" />
+        </div>
+      )}
+      {!error && top10TV.length === 0 && top10Movies.length === 0 && (
+        <div class="platform-empty container">
+          <p>No Apple TV+ content found for your region right now. Try again later.</p>
+        </div>
+      )}
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .platform-page { padding-bottom: 4rem; }
+  .platform-brand {
+    display: flex; align-items: center; gap: 1.25rem;
+    padding: 2rem 0 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .platform-logo-wrap {
+    width: 56px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+  .platform-brand--appletv .platform-logo-wrap { background: #000; border: 1px solid rgba(255,255,255,0.4); }
+  .platform-name {
+    font-size: var(--font-size-2xl); font-weight: 700;
+    color: var(--color-text); margin: 0 0 0.2rem;
+    letter-spacing: var(--letter-spacing-tight);
+  }
+  .platform-desc { font-size: var(--font-size-sm); color: var(--color-text-3); margin: 0; }
+  .platform-sections {
+    display: flex; flex-direction: column;
+    gap: var(--section-gap, 2rem);
+    padding-top: 1.5rem;
+  }
+  .platform-empty { padding: 4rem 0; color: var(--color-text-3); text-align: center; }
+</style>

@@ -1,23 +1,230 @@
+---
+// Layout.astro — Base layout for Filmora Movie
+import { ClientRouter } from 'astro:transitions';
+import Nav from '../components/Nav.astro';
+import CinematicFooter from '../components/react/CinematicFooter';
+import HumanGate from '../components/HumanGate.astro';
+import BackToTop from '../components/react/BackToTop';
+import BottomTabBar from '../components/react/BottomTabBar';
+import '../styles/global.css';
+import '../styles/mobile.css';
+
+export interface Props {
+  title?: string;
+  description?: string;
+  image?: string | null;
+  user?: { name: string; avatar_url: string | null } | null;
+  noFooter?: boolean;
+  noNav?: boolean;
+  noIndex?: boolean;
+}
+
+const {
+  title = 'Filmora Movie',
+  description = 'Every movie and show, one clean place to find where to watch it.',
+  image,
+  user = null,
+  noFooter = false,
+  noNav = false,
+  noIndex = false,
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, 'https://filmoramovie.com').toString();
+const ogImage   = image ?? 'https://filmoramovie.com/og-default.png';
+const pageTitle = title === 'Filmora Movie' ? title : `${title} — Filmora Movie`;
+
+// Human verification gate is scoped to the home page only. It is rendered
+// server-side just for "/"; every other route never includes the gate markup.
+const isHome = Astro.url.pathname === '/';
+---
+
 <!doctype html>
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro Basics</title>
-	</head>
-	<body>
-		<slot />
-	</body>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    {noIndex && <meta name="robots" content="noindex, nofollow" />}
+    <link rel="canonical" href={canonical} />
+
+    <!-- Open Graph -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:url"         content={canonical} />
+    <meta property="og:title"       content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image"       content={ogImage} />
+    <meta property="og:site_name"   content="Filmora Movie" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card"        content="summary_large_image" />
+    <meta name="twitter:title"       content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image"       content={ogImage} />
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="filmora" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#050811" />
+
+    <!-- Preconnect -->
+    <link rel="preconnect" href="https://image.tmdb.org" />
+    <link rel="preconnect" href="https://api.themoviedb.org" />
+
+    <!-- Google tag (gtag.js) -->
+    <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-CL6ECGJ4JL"></script>
+    <script is:inline>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      // send_page_view:false — we send page_view manually so Astro view
+      // transitions (client-side navigation) are tracked correctly.
+      gtag('config', 'G-CL6ECGJ4JL', { send_page_view: false });
+
+      function faSendPageView() {
+        gtag('event', 'page_view', {
+          page_title: document.title,
+          page_location: location.href,
+          page_path: location.pathname + location.search,
+        });
+      }
+      // Initial load
+      faSendPageView();
+      // Every Astro view-transition navigation
+      document.addEventListener('astro:page-load', faSendPageView);
+    </script>
+
+    <ClientRouter />
+    <slot name="head" />
+
+    <!-- ── Theme init: runs synchronously before paint to avoid FOUC ── -->
+    <script is:inline>
+      (function () {
+        function applyTheme() {
+          const saved = localStorage.getItem('filmora_theme');
+          const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', saved || preferred);
+        }
+        // Run immediately on first load
+        applyTheme();
+        // Re-apply after every Astro view-transition swap (page navigation)
+        document.addEventListener('astro:after-swap', applyTheme);
+      })();
+    </script>
+
+    <!-- ── Human-gate anti-flash: hide the gate before paint if already verified this session ── -->
+    <script is:inline>
+      (function () {
+        try {
+          if (sessionStorage.getItem('nx_human_ok') === '1') {
+            document.documentElement.classList.add('nx-verified');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+
+  <body>
+    <!-- ── "Are you human?" verification gate — home page only, on refresh ── -->
+    {isHome && <HumanGate />}
+
+    <!-- ── Scroll progress bar (pure DOM, no React re-renders) ── -->
+    <div id="scroll-progress" class="scroll-progress" aria-hidden="true"></div>
+
+    <!-- Skip to main -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    {!noNav && <Nav user={user} />}
+
+    <slot name="cookie-banner" />
+
+    <main id="main-content" tabindex="-1">
+      <slot />
+    </main>
+
+    {!noFooter && <CinematicFooter client:visible />}
+
+    <!-- Bottom tab bar (mobile only — hidden via CSS at ≥768px) -->
+    <BottomTabBar client:load />
+
+    <!-- Back-to-top (React island) -->
+    <BackToTop client:idle threshold={600} />
+
+    <!-- Scroll progress + scroll-reveal scripts -->
+    <script>
+      // ── Human-gate: only a genuine document load / refresh may show the gate.
+      //    On client-side (view-transition) navigation we remove any gate markup
+      //    so it never appears off the home page and never blocks navigation.
+      //    (The gate is server-rendered for "/" only; its inline script does not
+      //    re-run on view transitions, so a real refresh is the only trigger.)
+      document.addEventListener('astro:after-swap', () => {
+        document.documentElement.classList.remove('hg-lock');
+        document.getElementById('human-gate')?.remove();
+      });
+
+      // ── Scroll progress bar ──────────────────────────────────
+      const progressBar = document.getElementById('scroll-progress');
+      let rafId = 0;
+      function updateProgress() {
+        const scrollTop  = window.scrollY;
+        const docHeight  = document.documentElement.scrollHeight - window.innerHeight;
+        const pct        = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+        if (progressBar) progressBar.style.width = `${pct}%`;
+        rafId = 0;
+      }
+      window.addEventListener('scroll', () => {
+        if (rafId) return;
+        rafId = requestAnimationFrame(updateProgress);
+      }, { passive: true });
+
+      // ── Scroll-reveal (lightweight, zero-dependency) ─────────
+      // Any element with [data-reveal] fades/slides in when it enters view.
+      function initReveal() {
+        const els = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]:not(.is-revealed)'));
+        if (!('IntersectionObserver' in window)) {
+          els.forEach((el) => el.classList.add('is-revealed'));
+          return;
+        }
+        const io = new IntersectionObserver((entries, obs) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              (entry.target as HTMLElement).classList.add('is-revealed');
+              obs.unobserve(entry.target);
+            }
+          });
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+        els.forEach((el) => io.observe(el));
+      }
+      initReveal();
+      // Re-init after Astro view-transition swaps.
+      document.addEventListener('astro:page-load', initReveal);
+    </script>
+  </body>
 </html>
 
 <style>
-	html,
-	body {
-		margin: 0;
-		width: 100%;
-		height: 100%;
-	}
+  /* Skip link */
+  .skip-link {
+    position: absolute;
+    top: -100%;
+    left: 0;
+    background: #6366f1;
+    color: #fff;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 0 0 8px 0;
+    z-index: calc(var(--z-nav) + 10);
+    transition: top 0.2s ease;
+  }
+  .skip-link:focus { top: 0; }
+
+  main { min-height: calc(100vh - 56px); }
 </style>

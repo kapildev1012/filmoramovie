@@ -1,0 +1,404 @@
+---
+// Top10Rail.astro — Netflix-style "Top 10 Today"
+// The big rank number sits BEHIND the poster card (z-index: 0 vs z-index: 1).
+// The poster overlaps the left half of the number, exactly like net77.cc.
+export interface Props {
+  title: string;
+  viewAllHref?: string;
+  items: Array<{
+    id: number;
+    title?: string;
+    name?: string;
+    poster_path?: string | null;
+    backdrop_path?: string | null;
+    vote_average?: number;
+    media_type?: 'movie' | 'tv';
+  }>;
+  mediaType?: 'movie' | 'tv';
+  accentColor?: string;
+}
+
+const { title, viewAllHref, items, mediaType = 'tv', accentColor = '#e50914' } = Astro.props;
+const top10 = items.slice(0, 10);
+---
+
+<section class="t10-rail" aria-label={title}>
+  <div class="container">
+    <div class="t10-header">
+      <div class="t10-title-row">
+        <div class="t10-accent-bar" style={`background:${accentColor}`}></div>
+        <h2 class="t10-title">{title}</h2>
+      </div>
+      {viewAllHref && (
+        <a href={viewAllHref} class="t10-view-all" aria-label={`See all ${title}`}>
+          See all
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+      )}
+    </div>
+
+    <div class="t10-viewport" data-t10-rail>
+      <div class="t10-track" role="list" aria-label={`${title} list`} data-t10-track>
+        {top10.map((item, i) => {
+          const resolvedType = (item.media_type as 'movie' | 'tv') ?? mediaType;
+          const href = `/${resolvedType === 'movie' ? 'movie' : 'series'}/${item.id}`;
+          const resolvedTitle = item.title ?? item.name ?? '';
+          const poster = item.poster_path
+            ? `https://image.tmdb.org/t/p/w342${item.poster_path}`
+            : null;
+          const rating = item.vote_average ? item.vote_average.toFixed(1) : null;
+          return (
+            <div class="t10-item" role="listitem">
+              {/* ── Number sits at z-index 0, BEHIND the card ── */}
+              <span class="t10-rank" aria-hidden="true">{i + 1}</span>
+
+              {/* ── Poster at z-index 1, overlaps the right half of the number ── */}
+              <a href={href} class="t10-card" aria-label={resolvedTitle} tabindex={0}>
+                {poster ? (
+                  <img
+                    src={poster}
+                    alt={resolvedTitle}
+                    class="t10-poster"
+                    loading="lazy"
+                    decoding="async"
+                    width="160"
+                    height="240"
+                  />
+                ) : (
+                  <div class="t10-poster t10-poster--empty" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="m7 2 0 20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg>
+                  </div>
+                )}
+                <div class="t10-card-overlay">
+                  {rating && (
+                    <span class="t10-rating">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                      {rating}
+                    </span>
+                  )}
+                  <span class="t10-name">{resolvedTitle}</span>
+                </div>
+              </a>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  type T10El = HTMLElement & { _t10Init?: boolean };
+
+  function initT10(viewport: T10El) {
+    if (viewport._t10Init) return;
+    viewport._t10Init = true;
+
+    const track = viewport.querySelector<HTMLElement>('[data-t10-track]');
+    if (!track) return;
+
+    const originalItems = Array.from(track.children) as HTMLElement[];
+    const total = originalItems.length;
+    if (total < 2) return;
+
+    const VISIBLE   = 5;
+    const STEP_DUR  = 2000;   // each poster stays for 2 seconds
+    const SLIDE_DUR = 500;    // slide animation duration ms
+
+    let queue   = [...originalItems];  // circular queue
+    let animating = false;
+    let paused    = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    // Initial render: fill track with first VISIBLE items
+    track.innerHTML = '';
+    track.style.cssText += 'position:relative; overflow:hidden;';
+    queue.slice(0, VISIBLE).forEach(el => track.appendChild(el));
+
+    function getSlotWidth() {
+      const first = track.firstElementChild as HTMLElement | null;
+      return first ? first.offsetWidth : 0;
+    }
+
+    function nextSlide() {
+      if (animating) return;
+      animating = true;
+
+      const sw = getSlotWidth();
+      if (sw === 0) { animating = false; return; }
+
+      // The next item to slide in is queue[VISIBLE] (wraps via modulo)
+      const incomingEl = queue[VISIBLE % queue.length].cloneNode(true) as HTMLElement;
+      incomingEl.style.cssText = `
+        position:absolute;
+        left:${VISIBLE * sw}px;
+        top:0; bottom:0;
+        width:${sw}px;
+        pointer-events:none;
+      `;
+      track.appendChild(incomingEl);
+
+      // Slide entire track left by one slot
+      track.style.transition = 'none';
+      track.style.transform  = 'translateX(0px)';
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          track.style.transition = `transform ${SLIDE_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
+          track.style.transform  = `translateX(-${sw}px)`;
+
+          setTimeout(() => {
+            // Remove clone
+            track.removeChild(incomingEl);
+
+            // Reset transform instantly
+            track.style.transition = 'none';
+            track.style.transform  = 'translateX(0px)';
+
+            // Rotate queue: move first item to end, append real next item
+            const outgoing = queue.shift()!;
+            const incoming = queue[VISIBLE - 1]; // now the 5th visible
+            track.removeChild(track.firstElementChild!);
+            track.appendChild(queue[VISIBLE - 1]);
+            queue.push(outgoing); // keep it cycling at the back
+
+            animating = false;
+          }, SLIDE_DUR + 20);
+        });
+      });
+    }
+
+    function schedule() {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        nextSlide();
+        schedule();
+      }, STEP_DUR);
+    }
+
+    schedule();
+
+    // Pause on hover/touch — resume seamlessly
+    track.addEventListener('mouseenter', () => {
+      paused = true;
+      clearTimeout(timer);
+    });
+    track.addEventListener('mouseleave', () => {
+      paused = false;
+      schedule();
+    });
+    track.addEventListener('touchstart', () => {
+      paused = true;
+      clearTimeout(timer);
+    }, { passive: true });
+    track.addEventListener('touchend', () => {
+      paused = false;
+      schedule();
+    });
+
+    document.addEventListener('astro:before-swap', () => clearTimeout(timer), { once: true });
+  }
+
+  function initAll() {
+    // On mobile (≤767px) we use native horizontal scroll — skip the JS carousel
+    if (window.innerWidth <= 767) return;
+    document.querySelectorAll<T10El>('[data-t10-rail]').forEach(initT10);
+  }
+  initAll();
+  document.addEventListener('astro:page-load', initAll);
+  // Re-check on resize in case user rotates device
+  window.addEventListener('resize', () => {
+    document.querySelectorAll<T10El>('[data-t10-rail]').forEach((el) => {
+      if (window.innerWidth > 767) initT10(el);
+    });
+  }, { passive: true });
+</script>
+
+<style>
+  .t10-rail { margin-bottom: 1rem; }
+
+  .t10-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding: 0 0.25rem;
+  }
+  .t10-title-row { display: flex; align-items: center; gap: 0.625rem; }
+  .t10-accent-bar { width: 4px; height: 1.25rem; border-radius: 2px; flex-shrink: 0; }
+  .t10-title {
+    font-size: clamp(0.9375rem, 1.8vw, 1.25rem);
+    font-weight: 700;
+    color: var(--color-text);
+    letter-spacing: -0.01em;
+    margin: 0;
+    line-height: 1.2;
+  }
+  .t10-view-all {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    font-size: 0.8rem; font-weight: 600; color: rgba(255,255,255,0.4);
+    text-decoration: none; text-transform: uppercase; letter-spacing: 0.06em;
+    transition: color 0.2s; white-space: nowrap;
+    min-height: 44px;
+  }
+  .t10-view-all:hover { color: #fff; }
+  .t10-view-all svg { transition: transform 0.2s; }
+  .t10-view-all:hover svg { transform: translateX(3px); }
+
+  /* ── Viewport ── */
+  .t10-viewport { position: relative; overflow: hidden; }
+
+  /* ── Track — shows exactly 5 items, clips overflow for smooth slide ── */
+  .t10-track {
+    display: flex;
+    gap: 0;
+    overflow: hidden;
+    padding-bottom: 0.75rem;
+    padding-top: 1rem;
+    padding-left: 0.25rem;
+  }
+
+  /* ── Each item — exactly 1/5 of container width on desktop ── */
+  .t10-item {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    flex: 0 0 calc(100% / 5);
+    min-width: calc(100% / 5);
+    transition: opacity 0.3s ease;
+  }
+
+  /* ── Mobile: native scroll — bigger cards, 75% number visible ── */
+  @media (max-width: 767px) {
+    .t10-header {
+      padding-left: 0;
+      padding-right: 0;
+    }
+    .t10-viewport {
+      overflow-x: auto !important;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      scroll-snap-type: x mandatory;
+    }
+    .t10-viewport::-webkit-scrollbar { display: none; }
+
+    .t10-track {
+      overflow: visible !important;
+      padding-left: 0;
+      padding-right: 0;
+      padding-top: 1.25rem;
+      padding-bottom: 1rem;
+      gap: 0;
+    }
+
+    /* Each item: ~2 visible + peek of 3rd */
+    .t10-item {
+      flex: 0 0 calc(100vw / 2.2) !important;
+      min-width: calc(100vw / 2.2) !important;
+      scroll-snap-align: start;
+    }
+
+    .t10-title { font-size: 0.9375rem !important; }
+
+    /* Rank number: large + wide so exactly 75% is visible (25% hidden under card) */
+    .t10-rank {
+      font-size: clamp(5rem, 20vw, 7.5rem) !important;
+      /* width = ~40% of item width so the number protrudes left of the card */
+      width: clamp(56px, 18vw, 80px) !important;
+      text-align: right;
+      -webkit-text-stroke: 2.5px rgba(255,255,255,0.6) !important;
+      opacity: 0.85 !important;
+      flex-shrink: 0;
+    }
+
+    /* Card: takes up remaining 78% of item width.
+       negative margin of -25% of rank width = card covers 25% of number → 75% visible */
+    .t10-card {
+      /* Override the desktop calc; card fills the rest of the item minus the rank */
+      width: calc(100% - clamp(56px, 18vw, 80px)) !important;
+      /* Cover exactly 25% of the number: margin = -(rank width * 0.25) */
+      margin-left: calc(clamp(56px, 18vw, 80px) * -0.25) !important;
+      border-radius: 10px !important;
+    }
+  }
+
+  /* ── Giant outlined rank number (z-index 0 = BEHIND card) ── */
+  .t10-rank {
+    position: relative;
+    z-index: 0;
+    flex-shrink: 0;
+    /* Wide enough so 75% of the number is visible beside the card */
+    width: 90px;
+    font-size: clamp(5.5rem, 9vw, 8.5rem);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -0.05em;
+    text-align: right;
+    color: transparent;
+    -webkit-text-stroke: 3px rgba(255,255,255,0.55);
+    paint-order: stroke fill;
+    opacity: 0.7;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.8));
+    user-select: none;
+    align-self: flex-end;
+    margin-bottom: 0.15rem;
+  }
+  @media (min-width: 768px)  { .t10-rank { width: 100px; font-size: clamp(6rem, 8vw, 8.5rem); } }
+  @media (min-width: 1280px) { .t10-rank { width: 110px; font-size: 9rem; } }
+
+  /* ── Poster card — only overlaps 25% of the number ── */
+  .t10-card {
+    position: relative;
+    z-index: 1;
+    /* Small negative margin = card only covers ~25% of the number */
+    margin-left: -18px;
+    display: block;
+    width: calc(100% - 74px);
+    flex-shrink: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    text-decoration: none;
+    background: var(--color-surface-2);
+    box-shadow: -4px 0 18px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.45);
+    transition: transform 0.22s cubic-bezier(0.16,1,0.3,1), box-shadow 0.22s ease;
+  }
+  .t10-card:hover {
+    transform: scale(1.06) translateY(-5px);
+    box-shadow: -4px 0 18px rgba(0,0,0,0.6), 0 12px 32px rgba(0,0,0,0.7);
+  }
+
+  .t10-poster {
+    display: block;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+  }
+  .t10-poster--empty {
+    aspect-ratio: 2 / 3;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--color-surface-2); color: var(--color-text-3);
+  }
+
+  /* Hover overlay */
+  .t10-card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.28) 55%, transparent 100%);
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 0.5rem 0.45rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .t10-card:hover .t10-card-overlay,
+  .t10-card:focus-visible .t10-card-overlay { opacity: 1; }
+
+  .t10-rating {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.6875rem; font-weight: 700; color: #f5c518; margin-bottom: 0.2rem;
+  }
+  .t10-name {
+    font-size: 0.6875rem; font-weight: 600; color: #fff; line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+</style>

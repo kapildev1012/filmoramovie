@@ -1,0 +1,155 @@
+---
+// src/pages/contact.astro — Contact Us
+import Layout from '../layouts/Layout.astro';
+
+const email = 'hello@filmoramovie.com';
+---
+
+<Layout
+  title="Contact Us — Filmora Movie"
+  description="Get in touch with the Filmora Movie team. Questions, feedback, or content requests — we'd love to hear from you."
+>
+  <div class="container contact-page">
+    <div class="contact-header">
+      <span class="contact-eyebrow">Contact</span>
+      <h1 class="contact-title">Get in touch</h1>
+      <p class="contact-lead">
+        Questions, feedback, or a title you'd love to see? Drop us a message and
+        we'll get back to you as soon as we can.
+      </p>
+    </div>
+
+    <div class="contact-grid">
+      <!-- Contact form -->
+      <form class="contact-form" id="contact-form">
+        <div class="contact-field">
+          <label for="cf-name" class="contact-label">Name</label>
+          <input type="text" id="cf-name" name="name" class="contact-input" placeholder="Your name" required />
+        </div>
+
+        <div class="contact-field">
+          <label for="cf-email" class="contact-label">Email</label>
+          <input type="email" id="cf-email" name="email" class="contact-input" placeholder="you@example.com" required />
+        </div>
+
+        <div class="contact-field">
+          <label for="cf-subject" class="contact-label">Subject</label>
+          <input type="text" id="cf-subject" name="subject" class="contact-input" placeholder="What's this about?" />
+        </div>
+
+        <div class="contact-field">
+          <label for="cf-message" class="contact-label">Message</label>
+          <textarea id="cf-message" name="message" class="contact-input contact-textarea" rows="6" placeholder="Tell us what's on your mind…" required></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary contact-submit">Send message</button>
+        <p class="contact-form-note" id="contact-note" hidden></p>
+      </form>
+
+      <!-- Contact info sidebar -->
+      <aside class="contact-info">
+        <div class="contact-info-card">
+          <div class="contact-info-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+          </div>
+          <h2 class="contact-info-title">Email us</h2>
+          <a href={`mailto:${email}`} class="contact-info-link">{email}</a>
+          <p class="contact-info-desc">We usually reply within 1–2 business days.</p>
+        </div>
+
+        <div class="contact-info-card">
+          <div class="contact-info-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          </div>
+          <h2 class="contact-info-title">Before you write</h2>
+          <p class="contact-info-desc">
+            Check our <a href="/about">About</a> page and the FAQ on the homepage —
+            your question might already be answered.
+          </p>
+        </div>
+
+        <div class="contact-info-card">
+          <div class="contact-info-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-6 0v4"/><rect x="2" y="9" width="20" height="12" rx="2"/></svg>
+          </div>
+          <h2 class="contact-info-title">Privacy</h2>
+          <p class="contact-info-desc">
+            We handle your data responsibly. Read our <a href="/privacy">Privacy Policy</a>.
+          </p>
+        </div>
+      </aside>
+    </div>
+  </div>
+</Layout>
+
+<script is:inline define:vars={{ email }}>
+  const form = document.getElementById('contact-form');
+  const note = document.getElementById('contact-note');
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(form);
+    const name = (data.get('name') || '').toString();
+    const from = (data.get('email') || '').toString();
+    const subject = (data.get('subject') || 'Message from FilmoraMovie').toString();
+    const message = (data.get('message') || '').toString();
+    const body = `Name: ${name}\nEmail: ${from}\n\n${message}`;
+    const href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = href;
+    if (note) {
+      note.hidden = false;
+      note.textContent = 'Opening your email app… If nothing happens, email us directly at ' + email + '.';
+    }
+  });
+</script>
+
+<style>
+  .contact-page { padding-top: calc(var(--nav-offset) + 2rem); padding-bottom: 5rem; max-width: 960px; }
+
+  .contact-header { margin-bottom: 2.5rem; }
+  .contact-eyebrow {
+    display: inline-block; font-size: 0.6875rem; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-from);
+    background: rgba(66,133,244,0.1); border: 1px solid rgba(66,133,244,0.2);
+    padding: 0.25rem 0.75rem; border-radius: 9999px; margin-bottom: 1rem;
+  }
+  .contact-title { font-size: var(--font-size-3xl); font-weight: 700; color: var(--color-text); letter-spacing: -0.02em; margin: 0 0 0.75rem; }
+  .contact-lead { font-size: var(--font-size-lg); color: var(--color-text-2); margin: 0; max-width: 560px; line-height: 1.6; }
+
+  .contact-grid { display: grid; grid-template-columns: 1fr; gap: 2rem; }
+  @media (min-width: 900px) { .contact-grid { grid-template-columns: 1.5fr 1fr; gap: 3rem; } }
+
+  /* Form */
+  .contact-form { display: flex; flex-direction: column; gap: 1.25rem; }
+  .contact-field { display: flex; flex-direction: column; gap: 0.5rem; }
+  .contact-label { font-size: 0.8125rem; font-weight: 600; color: var(--color-text); }
+  .contact-input {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); color: var(--color-text);
+    font-family: inherit; font-size: 0.9375rem; padding: 0.75rem 0.875rem;
+    width: 100%; transition: border-color 0.15s ease;
+  }
+  .contact-input::placeholder { color: var(--color-text-3); }
+  .contact-input:focus { outline: none; border-color: var(--color-accent-from); }
+  .contact-textarea { resize: vertical; min-height: 120px; }
+  .contact-submit { align-self: flex-start; margin-top: 0.25rem; }
+  .contact-form-note { font-size: 0.8125rem; color: var(--color-text-2); margin: 0; }
+
+  /* Info sidebar */
+  .contact-info { display: flex; flex-direction: column; gap: 1rem; }
+  .contact-info-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl); padding: 1.5rem;
+  }
+  .contact-info-icon {
+    width: 40px; height: 40px; border-radius: var(--radius-md);
+    background: rgba(66,133,244,0.1); border: 1px solid rgba(66,133,244,0.2);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-accent-from); margin-bottom: 1rem;
+  }
+  .contact-info-title { font-size: 0.9375rem; font-weight: 600; color: var(--color-text); margin: 0 0 0.5rem; }
+  .contact-info-link { font-size: 0.9375rem; color: var(--color-accent-from); text-decoration: none; font-weight: 500; }
+  .contact-info-link:hover { text-decoration: underline; }
+  .contact-info-desc { font-size: 0.8125rem; color: var(--color-text-2); line-height: 1.6; margin: 0.5rem 0 0; }
+  .contact-info-desc a { color: var(--color-accent-from); text-decoration: none; }
+  .contact-info-desc a:hover { text-decoration: underline; }
+</style>

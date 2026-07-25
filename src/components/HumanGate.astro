@@ -1,0 +1,200 @@
+---
+// HumanGate.astro — "Are you human?" verification gate shown before the app.
+// Uses Cloudflare Turnstile: a modern, privacy-friendly CAPTCHA that usually
+// verifies with no puzzle at all (and falls back to an interactive challenge
+// for suspicious traffic).
+//
+// ── PRODUCTION SETUP ──────────────────────────────────────────────────────
+// 1. Create a Turnstile widget at https://dash.cloudflare.com/?to=/:account/turnstile
+//    and put your real SITE key below (safe to expose publicly).
+// 2. For REAL protection you must verify the returned token server-side with
+//    your SECRET key via https://challenges.cloudflare.com/turnstile/v0/siteverify
+//    (e.g. in an Astro API route) before granting access. A client-only gate
+//    stops casual bots but can be bypassed by a determined attacker.
+//
+// The default below is Cloudflare's public TEST site key, which always passes
+// so the gate works out-of-the-box in development.
+const SITE_KEY = '1x00000000000000000000AA';
+---
+
+<div id="human-gate" role="dialog" aria-modal="true" aria-labelledby="hg-title" aria-describedby="hg-desc">
+  <div class="hg-card">
+    <div class="hg-badge" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+    </div>
+    <h1 id="hg-title" class="hg-title">Are you human?</h1>
+    <p id="hg-desc" class="hg-desc">
+      A quick security check to keep bots out. Complete the verification below to continue to Filmora Movie.
+    </p>
+
+    <div class="hg-widget">
+      <div
+        class="cf-turnstile"
+        data-sitekey={SITE_KEY}
+        data-callback="onHumanVerified"
+        data-error-callback="onHumanError"
+        data-theme="dark"
+      ></div>
+    </div>
+
+    <p id="hg-status" class="hg-status" role="status" aria-live="polite">Waiting for verification…</p>
+    <p class="hg-fine">Protected by Cloudflare Turnstile</p>
+  </div>
+</div>
+
+<script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script is:inline>
+  (function () {
+    var KEY = 'nx_human_ok';
+
+    function isVerified() {
+      try { return sessionStorage.getItem(KEY) === '1'; } catch (e) { return false; }
+    }
+    function hideGate() {
+      var g = document.getElementById('human-gate');
+      document.documentElement.classList.remove('hg-lock');
+      if (!g) return;
+      g.classList.add('hg-done');
+      window.setTimeout(function () { g.style.display = 'none'; }, 420);
+    }
+    function lockGate() {
+      if (document.getElementById('human-gate')) {
+        document.documentElement.classList.add('hg-lock');
+      }
+    }
+
+    // Global callbacks invoked by the Turnstile widget.
+    window.onHumanVerified = function () {
+      try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
+      var s = document.getElementById('hg-status');
+      if (s) s.textContent = 'Verified — welcome!';
+      hideGate();
+    };
+    window.onHumanError = function () {
+      var s = document.getElementById('hg-status');
+      if (s) s.textContent = 'Verification failed. Please retry.';
+    };
+
+    // Decide initial state on this genuine document load (first hit / refresh).
+    // This inline script does not re-run on Astro view-transition navigations,
+    // and the gate is only rendered on the home page — so the verification gate
+    // appears exclusively on a real home-page refresh, never during in-app
+    // navigation between pages.
+    if (isVerified()) { hideGate(); } else { lockGate(); }
+  })();
+</script>
+
+<style is:global>
+  /* Prevent scrolling / interaction behind the gate while it is up. */
+  html.hg-lock,
+  html.hg-lock body { overflow: hidden; height: 100%; }
+
+  #human-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background:
+      radial-gradient(1200px 720px at 50% -10%, rgba(66,133,244,0.18), transparent 60%),
+      radial-gradient(1000px 900px at 110% 8%, rgba(161,66,244,0.14), transparent 58%),
+      #000;
+    animation: hg-fade-in 0.35s ease both;
+  }
+  /* Hidden immediately for already-verified sessions (no flash). */
+  html.nx-verified #human-gate { display: none !important; }
+
+  #human-gate.hg-done {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+
+  @keyframes hg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+  .hg-card {
+    width: 100%;
+    max-width: 26rem;
+    text-align: center;
+    padding: 2.25rem 1.75rem 1.75rem;
+    border-radius: 20px;
+    background: rgba(10, 10, 12, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .hg-badge {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    color: #fff;
+    background: linear-gradient(135deg, #4285F4, #A142F4);
+    box-shadow: 0 10px 30px rgba(66, 133, 244, 0.35);
+  }
+
+  .hg-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+
+  .hg-desc {
+    margin: 0 0 1.5rem;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .hg-widget {
+    display: flex;
+    justify-content: center;
+    min-height: 68px;
+  }
+
+  .hg-status {
+    margin: 1rem 0 0;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .hg-fine {
+    margin: 0.75rem 0 0;
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.3);
+  }
+
+  /* Light theme */
+  html[data-theme="light"] #human-gate {
+    background:
+      radial-gradient(1200px 720px at 50% -10%, rgba(66,133,244,0.12), transparent 60%),
+      #f4f4f5;
+  }
+  html[data-theme="light"] .hg-card {
+    background: rgba(255, 255, 255, 0.85);
+    border-color: rgba(0, 0, 0, 0.08);
+  }
+  html[data-theme="light"] .hg-title { color: #18181b; }
+  html[data-theme="light"] .hg-desc { color: rgba(0, 0, 0, 0.6); }
+  html[data-theme="light"] .hg-status { color: rgba(0, 0, 0, 0.45); }
+  html[data-theme="light"] .hg-fine { color: rgba(0, 0, 0, 0.35); }
+
+  @media (prefers-reduced-motion: reduce) {
+    #human-gate { animation: none; }
+    #human-gate.hg-done { transition: none; }
+  }
+</style>

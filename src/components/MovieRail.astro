@@ -1,0 +1,284 @@
+---
+// MovieRail.astro — Horizontal scroll rail: arrows, drag, wheel, snap, edge fades
+import PosterCard from './PosterCard.astro';
+
+export interface Props {
+  title: string;
+  viewAllHref?: string;
+  items: Array<{
+    id: number;
+    title?: string;
+    name?: string;
+    poster_path?: string | null;
+    backdrop_path?: string | null;
+    release_date?: string;
+    first_air_date?: string;
+    vote_average?: number;
+    overview?: string;
+    media_type?: 'movie' | 'tv';
+  }>;
+  mediaType?: 'movie' | 'tv';
+  wide?: boolean;
+}
+
+const { title, viewAllHref, items, mediaType, wide = false } = Astro.props;
+---
+
+<section class="rail" aria-label={title}>
+  <div class="container">
+    <div class="rail-header">
+      <h2 class="rail-title">{title}</h2>
+      {viewAllHref && (
+        <a href={viewAllHref} class="rail-view-all" aria-label={`View all ${title}`}>
+          View all
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m9 18 6-6-6-6"/>
+          </svg>
+        </a>
+      )}
+    </div>
+
+    <div class="rail-viewport" data-rail>
+      <button class="rail-arrow rail-arrow--prev" data-rail-prev aria-label={`Scroll ${title} left`} tabindex="-1" hidden>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+
+      <div class="scroll-rail" role="list" aria-label={`${title} list`} data-rail-track>
+        {items.map((item) => {
+          const resolvedMediaType = (item.media_type as 'movie' | 'tv') || mediaType || 'movie';
+          const resolvedTitle = item.title ?? item.name ?? '';
+          const releaseDate = item.release_date ?? item.first_air_date;
+          return (
+            <div role="listitem" class="rail-item">
+              <PosterCard
+                id={item.id}
+                title={resolvedTitle}
+                mediaType={resolvedMediaType}
+                posterPath={item.poster_path ?? null}
+                backdropPath={item.backdrop_path}
+                releaseDate={releaseDate}
+                voteAverage={item.vote_average}
+                overview={item.overview}
+                wide={wide}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <button class="rail-arrow rail-arrow--next" data-rail-next aria-label={`Scroll ${title} right`} tabindex="-1" hidden>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Enhance every rail: arrows, drag-to-scroll, wheel→horizontal, edge fades.
+  // Astro bundles this script once; it initialises all [data-rail] instances.
+  type RailEl = HTMLElement & { _railInit?: boolean };
+
+  function initRail(viewport: RailEl) {
+    if (viewport._railInit) return;
+    viewport._railInit = true;
+
+    const track = viewport.querySelector<HTMLElement>('[data-rail-track]');
+    const prev = viewport.querySelector<HTMLButtonElement>('[data-rail-prev]');
+    const next = viewport.querySelector<HTMLButtonElement>('[data-rail-next]');
+    if (!track) return;
+
+    const updateArrows = () => {
+      const max = track.scrollWidth - track.clientWidth - 2;
+      const atStart = track.scrollLeft <= 2;
+      const atEnd = track.scrollLeft >= max;
+      const scrollable = track.scrollWidth > track.clientWidth + 4;
+      if (prev) prev.hidden = !scrollable || atStart;
+      if (next) next.hidden = !scrollable || atEnd;
+      viewport.classList.toggle('rail--fade-left', scrollable && !atStart);
+      viewport.classList.toggle('rail--fade-right', scrollable && !atEnd);
+    };
+
+    const scrollByPage = (dir: number) => {
+      track.scrollBy({ left: dir * track.clientWidth * 0.85, behavior: 'smooth' });
+    };
+
+    prev?.addEventListener('click', () => scrollByPage(-1));
+    next?.addEventListener('click', () => scrollByPage(1));
+
+    let raf = 0;
+    track.addEventListener('scroll', () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { updateArrows(); raf = 0; });
+    }, { passive: true });
+
+    // Wheel → horizontal (only when vertical intent dominates)
+    track.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        const max = track.scrollWidth - track.clientWidth;
+        if ((e.deltaY < 0 && track.scrollLeft > 0) || (e.deltaY > 0 && track.scrollLeft < max)) {
+          e.preventDefault();
+          track.scrollLeft += e.deltaY;
+        }
+      }
+    }, { passive: false });
+
+    // Pointer drag-to-scroll (mouse). Suppresses the click that follows a drag.
+    let down = false, startX = 0, startScroll = 0, moved = false;
+    track.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      down = true; moved = false;
+      startX = e.clientX; startScroll = track.scrollLeft;
+    });
+    track.addEventListener('pointermove', (e) => {
+      if (!down) return;
+      const dx = e.clientX - startX;
+      if (Math.abs(dx) > 5) { moved = true; track.classList.add('is-dragging'); }
+      track.scrollLeft = startScroll - dx;
+    });
+    const endDrag = () => { down = false; setTimeout(() => track.classList.remove('is-dragging'), 0); };
+    track.addEventListener('pointerup', endDrag);
+    track.addEventListener('pointerleave', endDrag);
+    track.addEventListener('click', (e) => {
+      if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; }
+    }, true);
+
+    updateArrows();
+    // Re-check once images/fonts settle.
+    window.addEventListener('load', updateArrows, { once: true });
+    if ('ResizeObserver' in window) new ResizeObserver(updateArrows).observe(track);
+  }
+
+  function initAllRails() {
+    document.querySelectorAll<RailEl>('[data-rail]').forEach(initRail);
+  }
+  initAllRails();
+  document.addEventListener('astro:page-load', initAllRails);
+</script>
+
+<style>
+  .rail { margin-bottom: 1rem; }
+
+  .rail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    padding: 0 0.25rem;
+  }
+
+  /* Netflix-style section title: bold, tight, left-aligned */
+  .rail-title {
+    font-size: clamp(1rem, 1.8vw, 1.25rem);
+    font-weight: 700;
+    color: #e5e5e5;
+    letter-spacing: -0.01em;
+    margin: 0;
+    line-height: 1.2;
+  }
+
+  /* "Explore all" link — Netflix-style: small, appears on hover */
+  .rail-view-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.4);
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    transition: color 0.2s ease;
+    white-space: nowrap;
+  }
+  .rail-view-all:hover { color: #fff; }
+  .rail-view-all svg { transition: transform 0.2s ease; }
+  .rail-view-all:hover svg { transform: translateX(3px); }
+
+  /* Viewport wraps the track + arrows and hosts edge fades */
+  .rail-viewport { position: relative; }
+
+  .rail-viewport::before,
+  .rail-viewport::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0.5rem;
+    width: 48px;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  .rail-viewport::before {
+    left: 0;
+    background: linear-gradient(to right, var(--color-bg), transparent);
+  }
+  .rail-viewport::after {
+    right: 0;
+    background: linear-gradient(to left, var(--color-bg), transparent);
+  }
+  .rail-viewport.rail--fade-left::before { opacity: 1; }
+  .rail-viewport.rail--fade-right::after { opacity: 1; }
+
+  /* Track — scroll-snap + smooth */
+  .scroll-rail {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-snap-type: x proximity;
+    scroll-behavior: smooth;
+  }
+  .scroll-rail::-webkit-scrollbar { display: none; }
+  .scroll-rail.is-dragging { scroll-behavior: auto; cursor: grabbing; scroll-snap-type: none; }
+  .rail-item { scroll-snap-align: start; }
+
+  /* Arrows */
+  .rail-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 8, 17, 0.75);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: #fff;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease, transform 0.2s var(--ease-out-fast);
+  }
+  .rail-viewport:hover .rail-arrow:not([hidden]),
+  .rail-viewport:focus-within .rail-arrow:not([hidden]) { opacity: 1; }
+  .rail-arrow[hidden] { display: none; }
+  .rail-arrow:hover { background: rgba(5,8,17,0.95); border-color: var(--color-accent-to); transform: translateY(-50%) scale(1.08); }
+  .rail-arrow--prev { left: -6px; }
+  .rail-arrow--next { right: -6px; }
+
+  @media (max-width: 767px) {
+    .rail-arrow { display: none; }
+    .rail-viewport::before, .rail-viewport::after { display: none; }
+    .rail-title { font-size: 0.9375rem !important; }
+    .rail-header {
+      padding-left: 0;
+      padding-right: 0;
+    }
+    .scroll-rail {
+      padding-left: 0;
+      padding-right: 0;
+      gap: 0.5rem;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-rail { scroll-behavior: auto; }
+  }
+</style>

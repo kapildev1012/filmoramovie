@@ -1,0 +1,440 @@
+---
+// src/pages/series/[id].astro — Series detail page
+import Layout from '../../layouts/Layout.astro';
+import HeroCarousel from '../../components/react/HeroCarousel';
+import MovieRail from '../../components/MovieRail.astro';
+import { CastGallery } from '../../components/ui/gallery';
+import InfiniteGallery from '../../components/ui/3d-gallery-photography';
+import { getSeriesFull, getSeriesRecommendations, getOfficialTrailerKey, getWatchProvidersForCountry } from '../../lib/tmdb';
+import type { HeroSlide } from '../../lib/tmdb';
+import type { TMDBCastMember, TMDBProvider, TMDBSeason } from '../../lib/types';
+
+const { id } = Astro.params;
+
+if (!id || isNaN(parseInt(id))) {
+  return Astro.redirect('/series');
+}
+
+let data: Awaited<ReturnType<typeof getSeriesFull>> | null = null;
+let error: string | null = null;
+let notFound = false;
+
+try {
+  data = await getSeriesFull(id);
+} catch (e) {
+  const msg = e instanceof Error ? e.message : '';
+  if (msg.includes('404')) notFound = true;
+  else error = msg || 'Failed to load series';
+}
+
+if (notFound) {
+  return Astro.redirect('/series');
+}
+
+if (!data) {
+  error = error || 'Failed to load series';
+}
+
+const series         = data?.series;
+const credits        = data?.credits;
+const videos         = data?.videos;
+const watchProviders = data?.watchProviders;
+
+const trailerKey = videos ? getOfficialTrailerKey(videos) : null;
+const providers  = watchProviders ? getWatchProvidersForCountry(watchProviders) : null;
+
+// Recommendations ("More Like This") — non-fatal if it fails.
+let recommendations: Awaited<ReturnType<typeof getSeriesRecommendations>>['results'] = [];
+if (series) {
+  try {
+    const rec = await getSeriesRecommendations(series.id);
+    recommendations = rec.results.slice(0, 20);
+  } catch {}
+}
+
+const TMDB_IMG = 'https://image.tmdb.org/t/p';
+const backdropUrl = series?.backdrop_path ? `${TMDB_IMG}/w1280${series.backdrop_path}` : null;
+const posterUrl = series?.poster_path ? `${TMDB_IMG}/w500${series.poster_path}` : null;
+
+const cast = credits?.cast.slice(0, 20) ?? [];
+const castPhotos = cast
+  .filter((c) => c.profile_path)
+  .slice(0, 5)
+  .map((c) => ({ src: `https://image.tmdb.org/t/p/w185${c.profile_path}`, alt: c.name, name: c.name }));
+// Larger, higher-res set for the desktop/tablet 3D gallery
+const castGalleryImages = cast
+  .filter((c) => c.profile_path)
+  .slice(0, 12)
+  .map((c) => ({ src: `https://image.tmdb.org/t/p/w342${c.profile_path}`, alt: c.name }));
+const releaseYear = series?.first_air_date?.slice(0, 4);
+const rating = series?.vote_average ? Math.round(series.vote_average * 10) / 10 : null;
+
+// Filter out specials (season 0) from main list
+const mainSeasons = (series?.seasons ?? []).filter((s: TMDBSeason) => s.season_number > 0);
+
+// Providers deduplication
+const allProviders = [
+  ...(providers?.flatrate ?? []),
+  ...(providers?.rent ?? []),
+  ...(providers?.buy ?? []),
+  ...(providers?.free ?? []),
+  ...(providers?.ads ?? []),
+];
+const uniqueProviders = allProviders.reduce<TMDBProvider[]>((acc, p) => {
+  if (!acc.find((x) => x.provider_id === p.provider_id)) acc.push(p);
+  return acc;
+}, []);
+
+// Build a single cinematic hero slide so the detail page opens with the
+// exact same HeroCarousel used on the /series browse page.
+const heroSlide: HeroSlide | null = series
+  ? {
+      id: series.id,
+      mediaType: 'tv',
+      title: series.name,
+      overview: series.overview,
+      backdropUrl,
+      posterUrl,
+      releaseYear: releaseYear ?? '',
+      rating: rating ?? 0,
+      genres: (series.genres ?? []).map((g) => g.name).slice(0, 3),
+      runtime:
+        series.episode_run_time?.[0] && series.episode_run_time[0] > 0
+          ? `${series.episode_run_time[0]}m`
+          : series.number_of_seasons
+            ? `${series.number_of_seasons} Season${series.number_of_seasons > 1 ? 's' : ''}`
+            : null,
+      href: trailerKey ? '#trailer' : '#watch-heading',
+    }
+  : null;
+---
+
+<Layout
+  title={series ? `${series.name}${releaseYear ? ` (${releaseYear})` : ''}` : 'Series'}
+  description={series?.overview || series?.tagline || 'Series details'}
+  image={backdropUrl ?? posterUrl}
+>
+  {error ? (
+    <div class="detail-error container">
+      <h1>Failed to load</h1>
+      <p>{error}</p>
+      <a href="/series" class="btn btn-secondary">Back to Series</a>
+    </div>
+  ) : (
+    <article>
+      {/* ── Cinematic hero — identical to the /series browse hero ── */}
+      {heroSlide && (
+        <HeroCarousel client:load slides={[heroSlide]} label={heroSlide.title} />
+      )}
+
+      <div class="detail-body container">
+        {/* ── Where to Watch ── */}
+        <section class="detail-section" data-reveal aria-labelledby="watch-heading">
+          <h2 class="detail-section-title" id="watch-heading">Where to Watch</h2>
+          {uniqueProviders.length > 0 ? (
+            <div class="providers-grid">
+              {providers?.flatrate && providers.flatrate.length > 0 && (
+                <div class="provider-group">
+                  <h3 class="provider-group-title">Stream</h3>
+                  <div class="provider-logos">
+                    {providers.flatrate.map((p) => (
+                      <a href={providers!.link} target="_blank" rel="noopener noreferrer" class="provider-logo-link" aria-label={`Watch on ${p.provider_name}`} title={p.provider_name}>
+                        <img src={`https://image.tmdb.org/t/p/w92${p.logo_path}`} alt={p.provider_name} class="provider-logo" width="44" height="44" loading="lazy" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {providers?.rent && providers.rent.length > 0 && (
+                <div class="provider-group">
+                  <h3 class="provider-group-title">Rent</h3>
+                  <div class="provider-logos">
+                    {providers.rent.map((p) => (
+                      <a href={providers!.link} target="_blank" rel="noopener noreferrer" class="provider-logo-link" aria-label={`Rent on ${p.provider_name}`} title={p.provider_name}>
+                        <img src={`https://image.tmdb.org/t/p/w92${p.logo_path}`} alt={p.provider_name} class="provider-logo" width="44" height="44" loading="lazy" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div class="providers-empty">
+              <p>No streaming providers found for your region (IN). Check on
+                <a href={`https://www.themoviedb.org/tv/${series.id}/watch`} target="_blank" rel="noopener noreferrer" class="providers-tmdb-link">TMDB</a>.
+              </p>
+            </div>
+          )}
+          <p class="providers-attribution">Watch provider data by <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a> via TMDB.</p>
+        </section>
+
+        {/* ── Trailer ── */}
+        {trailerKey && (
+          <section class="detail-section" id="trailer" data-reveal aria-labelledby="trailer-heading">
+            <h2 class="detail-section-title" id="trailer-heading">Trailer</h2>
+            <div class="trailer-wrap">
+              <iframe
+                src={`https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1`}
+                title={`${series.name} — Official Trailer`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen
+                loading="lazy"
+                class="trailer-iframe"
+              />
+            </div>
+          </section>
+        )}
+
+        {/* ── Seasons / Episodes accordion ── */}
+        {mainSeasons.length > 0 && (
+          <section class="detail-section" data-reveal aria-labelledby="seasons-heading">
+            <h2 class="detail-section-title" id="seasons-heading">Seasons</h2>
+            <div class="seasons-list">
+              {mainSeasons.map((season: TMDBSeason) => (
+                <details class="season-item">
+                  <summary class="season-summary">
+                    <div class="season-summary-inner">
+                      {season.poster_path ? (
+                        <img
+                          src={`https://image.tmdb.org/t/p/w92${season.poster_path}`}
+                          alt=""
+                          class="season-poster"
+                          loading="lazy"
+                          width="46"
+                          height="69"
+                        />
+                      ) : (
+                        <div class="season-poster season-poster--placeholder" aria-hidden="true" />
+                      )}
+                      <div class="season-meta">
+                        <span class="season-name">{season.name}</span>
+                        <span class="season-info">
+                          {season.episode_count} episodes
+                          {season.air_date && ` · ${season.air_date.slice(0, 4)}`}
+                        </span>
+                      </div>
+                      <svg class="season-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m6 9 6 6 6-6"/>
+                      </svg>
+                    </div>
+                  </summary>
+                  {season.overview && (
+                    <p class="season-overview">{season.overview}</p>
+                  )}
+                  {season.episodes && season.episodes.length > 0 ? (
+                    <ol class="episode-list">
+                      {season.episodes.map((ep) => (
+                        <li class="episode-item">
+                          <div class="episode-number">E{ep.episode_number}</div>
+                          <div class="episode-info">
+                            <div class="episode-title-row">
+                              <span class="episode-title">{ep.name}</span>
+                              {ep.runtime && <span class="episode-runtime">{ep.runtime}m</span>}
+                            </div>
+                            {ep.overview && <p class="episode-overview line-clamp-2">{ep.overview}</p>}
+                            {ep.air_date && <span class="episode-airdate">{ep.air_date}</span>}
+                          </div>
+                          {ep.still_path && (
+                            <img
+                              src={`https://image.tmdb.org/t/p/w300${ep.still_path}`}
+                              alt=""
+                              class="episode-still"
+                              loading="lazy"
+                              width="120"
+                              height="68"
+                            />
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p class="season-no-episodes">Episode details not yet available.</p>
+                  )}
+                </details>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Cast ── */}
+        {cast.length > 0 && (
+          <section class="detail-section" data-reveal aria-labelledby="cast-heading">
+            <h2 class="detail-section-title" id="cast-heading">Cast</h2>
+            {castPhotos.length > 0 && (
+              <div class="cast-gallery-mobile">
+                <CastGallery client:visible photos={castPhotos} />
+              </div>
+            )}
+            {castGalleryImages.length > 0 && (
+              <div class="cast-gallery-desktop">
+                <InfiniteGallery
+                  client:visible
+                  images={castGalleryImages}
+                  speed={1.2}
+                  zSpacing={3}
+                  visibleCount={12}
+                  falloff={{ near: 0.8, far: 14 }}
+                  className="cast-3d-canvas"
+                />
+                <p class="cast-3d-hint">Scroll, use arrow keys, or drag to explore the cast</p>
+              </div>
+            )}
+            <div class="cast-grid" role="list">
+              {cast.map((member: TMDBCastMember) => (
+                <div class="cast-card" role="listitem">
+                  <div class="cast-avatar">
+                    {member.profile_path ? (
+                      <img src={`https://image.tmdb.org/t/p/w185${member.profile_path}`} alt={member.name} class="cast-avatar-img" loading="lazy" width="80" height="120" />
+                    ) : (
+                      <div class="cast-avatar-placeholder" aria-hidden="true">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      </div>
+                    )}
+                  </div>
+                  <div class="cast-info">
+                    <span class="cast-name">{member.name}</span>
+                    <span class="cast-character">{member.character}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {recommendations.length > 0 && (
+        <div class="detail-related" data-reveal>
+          <MovieRail title="More Like This" items={recommendations} mediaType="tv" />
+        </div>
+      )}
+    </article>
+  )}
+</Layout>
+
+<style>
+  /* ── Hero — backdrop matched to HeroCarousel exactly ── */
+  .detail-hero { position: relative; min-height: 70vh; display: flex; align-items: flex-end; padding-bottom: 3rem; overflow: hidden; background: #000; }
+  .detail-backdrop { position: absolute; inset: 0; }
+  .detail-backdrop-img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; animation: detail-kenburns 6s ease-out forwards; }
+  @keyframes detail-kenburns { from { transform: scale(1.06); } to { transform: scale(1); } }
+  /* Bottom vignette — matches HeroCarousel .nf-grad-bottom */
+  .detail-backdrop-overlay { position: absolute; inset: 0; background: linear-gradient(to top, #000 0%, rgba(0,0,0,0.9) 18%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.1) 75%, transparent 100%); }
+  /* Top fade — matches HeroCarousel .nf-grad-top */
+  .detail-backdrop::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 120px; background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent); pointer-events: none; }
+  /* Left cinematic gradient — matches HeroCarousel .nf-grad-left */
+  .detail-hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 35%, transparent 65%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  @media (prefers-reduced-motion: reduce) { .detail-backdrop-img { animation: none; } }
+  .detail-hero-content { position: relative; z-index: 1; display: flex; gap: 2.5rem; align-items: flex-end; padding-top: var(--nav-offset); }
+  .detail-poster { width: 200px; flex-shrink: 0; border-radius: var(--radius-lg); box-shadow: 0 20px 60px rgba(0,0,0,0.6); display: none; }
+  @media (min-width: 768px) { .detail-poster { display: block; } }
+  .detail-info { flex: 1; min-width: 0; }
+  .detail-breadcrumb { display: flex; align-items: center; gap: 0.5rem; font-size: var(--font-size-sm); color: var(--color-text-3); margin-bottom: 0.75rem; flex-wrap: wrap; }
+  .detail-breadcrumb-link { color: var(--color-text-3); text-decoration: none; }
+  .detail-breadcrumb-link:hover { color: var(--color-text); }
+  .detail-title { font-size: clamp(1.75rem, 4vw, 3rem); font-weight: 700; color: #fff; letter-spacing: var(--letter-spacing-tight); margin: 0 0 0.375rem; line-height: 1.1; }
+  .detail-title-year { font-size: 0.7em; font-weight: 400; opacity: 0.7; margin-left: 0.375rem; }
+  .detail-tagline { font-size: var(--font-size-base); font-style: italic; color: rgba(255,255,255,0.6); margin: 0 0 0.75rem; }
+  .detail-meta { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+  .detail-meta-item { font-size: var(--font-size-sm); color: rgba(255,255,255,0.7); }
+  .detail-rating { display: flex; align-items: center; gap: 0.25rem; color: var(--color-success) !important; font-weight: 600; }
+  .detail-genres { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+  .detail-genre-chip { text-decoration: none; color: rgba(255,255,255,0.75); border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); transition: all var(--duration-fast) ease; }
+  .detail-genre-chip:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .detail-overview { font-size: var(--font-size-base); line-height: var(--line-height-normal); color: rgba(255,255,255,0.85); margin: 0 0 1.5rem; max-width: 640px; }
+  .detail-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .detail-play-btn { padding: 0.875rem 2rem; font-size: 1rem; font-weight: 700; box-shadow: 0 4px 24px rgba(99,102,241,0.45); }
+  .detail-play-btn:hover { box-shadow: 0 8px 32px rgba(99,102,241,0.65); }
+  .detail-credits-summary { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0; font-size: var(--font-size-sm); }
+  .detail-credits-summary dt { color: rgba(255,255,255,0.5); font-weight: 500; }
+  .detail-credits-summary dd { color: rgba(255,255,255,0.85); margin: 0; }
+
+  .detail-body { padding-top: 3rem; padding-bottom: 4rem; }
+  .detail-section { margin-bottom: 3rem; }
+  .detail-section-title { font-size: var(--font-size-xl); font-weight: 600; color: var(--color-text); letter-spacing: var(--letter-spacing-tight); margin: 0 0 1.25rem; }
+
+  /* Providers */
+  .providers-grid { display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 0.75rem; }
+  .provider-group-title { font-size: var(--font-size-xs); font-weight: 600; text-transform: uppercase; letter-spacing: var(--letter-spacing-wider); color: var(--color-text-3); margin: 0 0 0.75rem; }
+  .provider-logos { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .provider-logo-link { display: block; border-radius: var(--radius-md); overflow: hidden; transition: transform var(--duration-fast) ease; border: 1px solid var(--color-border); }
+  .provider-logo-link:hover { transform: scale(1.05); }
+  .provider-logo { width: 52px; height: 52px; object-fit: cover; display: block; }
+  .providers-empty { padding: 1.5rem; border: 1px dashed var(--color-border); border-radius: var(--radius-md); text-align: center; font-size: var(--font-size-sm); color: var(--color-text-3); }
+  .providers-tmdb-link, .providers-attribution a { color: var(--color-accent-from); text-decoration: none; }
+  .providers-attribution { font-size: var(--font-size-xs); color: var(--color-text-3); margin-top: 0.5rem; }
+
+  /* Trailer — full screen height, 16:9 width, centred */
+  .trailer-wrap {
+    position: relative;
+    height: min(75vh, 720px);
+    width: min(calc(min(75vh, 720px) * 16 / 9), 100%);
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+  }
+  .trailer-iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+
+  /* Seasons */
+  .seasons-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .season-item { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface); }
+  .season-item[open] { border-color: var(--color-text-3); }
+  .season-summary { cursor: pointer; list-style: none; padding: 0; }
+  .season-summary::-webkit-details-marker { display: none; }
+  .season-summary-inner { display: flex; align-items: center; gap: 1rem; padding: 0.875rem 1rem; }
+  .season-poster { width: 46px; height: 69px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0; background: var(--color-surface-2); }
+  .season-poster--placeholder { display: block; }
+  .season-meta { flex: 1; min-width: 0; }
+  .season-name { display: block; font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text); }
+  .season-info { display: block; font-size: var(--font-size-xs); color: var(--color-text-3); margin-top: 0.125rem; }
+  .season-chevron { color: var(--color-text-3); flex-shrink: 0; transition: transform 0.2s ease; }
+  .season-item[open] .season-chevron { transform: rotate(180deg); }
+  .season-overview { font-size: var(--font-size-sm); color: var(--color-text-2); padding: 0 1rem 0.75rem; margin: 0; line-height: 1.5; }
+
+  /* Episodes */
+  .episode-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--color-border); }
+  .episode-item { display: flex; gap: 1rem; align-items: flex-start; padding: 0.875rem 1rem; border-bottom: 1px solid var(--color-border); }
+  .episode-item:last-child { border-bottom: none; }
+  .episode-number { font-size: var(--font-size-xs); font-weight: 600; color: var(--color-text-3); flex-shrink: 0; min-width: 24px; padding-top: 0.125rem; }
+  .episode-info { flex: 1; min-width: 0; }
+  .episode-title-row { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+  .episode-title { font-size: var(--font-size-sm); font-weight: 500; color: var(--color-text); }
+  .episode-runtime { font-size: var(--font-size-xs); color: var(--color-text-3); white-space: nowrap; }
+  .episode-overview { font-size: var(--font-size-xs); color: var(--color-text-3); margin: 0.25rem 0; line-height: 1.4; }
+  .episode-airdate { font-size: var(--font-size-xs); color: var(--color-text-3); }
+  .episode-still { border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0; display: none; }
+  @media (min-width: 640px) { .episode-still { display: block; } }
+  .season-no-episodes { font-size: var(--font-size-sm); color: var(--color-text-3); padding: 0.75rem 1rem; margin: 0; }
+
+  /* Cast */
+  /* Mobile: interactive fan gallery. Tablet + desktop: 3D gallery. */
+  .cast-gallery-mobile { display: none; }
+  .cast-gallery-desktop { display: none; }
+  @media (max-width: 767px) {
+    .cast-gallery-mobile { display: block; }
+  }
+  @media (min-width: 768px) {
+    .cast-gallery-desktop { display: block; }
+  }
+  /* Sized as large as the homepage FeaturedGallery + GalleryShowcase (taller showcase). */
+  .cast-3d-canvas { width: 100%; height: clamp(360px, 70svh, 100svh); border-radius: var(--radius-lg, 14px); overflow: hidden; background: var(--color-surface-2); }
+  .cast-3d-hint { text-align: center; font-size: var(--font-size-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-3); margin: 0.75rem 0 0; }
+  .cast-grid { display: none !important; }
+  .cast-card { display: flex; flex-direction: column; gap: 0.5rem; }
+  .cast-avatar { aspect-ratio: 2/3; border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface-2); }
+  .cast-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+  .cast-avatar-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-3); }
+  .cast-info { display: flex; flex-direction: column; gap: 0.125rem; }
+  .cast-name { font-size: var(--font-size-sm); font-weight: 500; color: var(--color-text); line-height: 1.2; }
+  .cast-character { font-size: var(--font-size-xs); color: var(--color-text-3); line-height: 1.2; }
+
+  .detail-error { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; text-align: center; padding: 4rem 0; }
+</style>

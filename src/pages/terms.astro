@@ -1,0 +1,117 @@
+---
+// src/pages/terms.astro — Terms of Use
+import Layout from '../layouts/Layout.astro';
+const updated = '2026-07-20';
+---
+
+<Layout title="Terms of Use — Filmora Movie">
+  <div class="container legal-page">
+    <div class="legal-header">
+      <h1 class="legal-title">Terms of Use</h1>
+      <p class="legal-updated">Last updated: {updated}</p>
+    </div>
+
+    <div class="legal-body">
+      <section class="legal-section">
+        <h2>1. Service description</h2>
+        <p>
+          Filmora Movie ("we", "us", "the service") is a movie and TV series <strong>discovery and tracking platform</strong>.
+          We provide metadata, cast/crew information, and official trailers sourced from The Movie Database (TMDB),
+          and we show you where titles can be legally streamed, rented, or purchased.
+        </p>
+        <p>
+          <strong>Filmora Movie does not host, stream, proxy, or distribute any video content.</strong>
+          All "Watch Now" links direct you to licensed third-party streaming services.
+        </p>
+      </section>
+
+      <section class="legal-section">
+        <h2>2. Permitted use</h2>
+        <p>You may use Filmora Movie to:</p>
+        <ul>
+          <li>Browse movie and TV series metadata</li>
+          <li>Search for titles, cast, and crew</li>
+          <li>Save titles to your personal watchlist</li>
+          <li>Rate titles you have watched</li>
+          <li>Find which legal streaming services carry a title</li>
+        </ul>
+      </section>
+
+      <section class="legal-section">
+        <h2>3. Prohibited use</h2>
+        <p>You must not use this service to:</p>
+        <ul>
+          <li>Circumvent, exploit, or overload the TMDB API through this service</li>
+          <li>Scrape, republish, or resell data obtained through the service</li>
+          <li>Attempt to access other users' accounts or data</li>
+          <li>Use the service in any way that violates applicable law</li>
+        </ul>
+      </section>
+
+      <section class="legal-section">
+        <h2>4. Accounts</h2>
+        <p>
+          You sign in using Google OAuth 2.0. You are responsible for keeping your Google account secure.
+          We may suspend or terminate accounts that violate these terms.
+        </p>
+      </section>
+
+      <section class="legal-section">
+        <h2>5. TMDB data</h2>
+        <p>
+          Movie and TV data is provided by
+          <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">The Movie Database (TMDB)</a>.
+          This product uses the TMDB API but is not endorsed or certified by TMDB.
+          TMDB's <a href="https://www.themoviedb.org/terms-of-use" target="_blank" rel="noopener noreferrer">Terms of Use</a>
+          govern your use of their data.
+        </p>
+        <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" class="tmdb-badge-link" aria-label="Powered by TMDB">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190.24 81.52" width="90" height="39" aria-hidden="true">
+            <defs><linearGradient id="t-tmdb" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#90cea1"/><stop offset="100%" stop-color="#01b4e4"/></linearGradient></defs>
+            <rect width="190.24" height="81.52" rx="10" fill="url(#t-tmdb)"/>
+            <text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="26" fill="#0d253f" letter-spacing="2">TMDB</text>
+          </svg>
+        </a>
+      </section>
+
+      <section class="legal-section">
+        <h2>6. Disclaimers</h2>
+        <p>
+          The service is provided "as is" without warranty of any kind. Streaming availability information
+          is sourced from JustWatch via TMDB and may not always be accurate or up to date. Always verify
+          availability on the provider's own platform.
+        </p>
+      </section>
+
+      <section class="legal-section">
+        <h2>7. Changes</h2>
+        <p>
+          We may update these terms from time to time. Continued use of the service after changes
+          constitutes acceptance of the updated terms.
+        </p>
+      </section>
+
+      <section class="legal-section">
+        <h2>8. Contact</h2>
+        <p>Questions? Email <a href="mailto:hello@filmoramovie.com">hello@filmoramovie.com</a>.</p>
+      </section>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .legal-page { padding-top: calc(var(--nav-offset) + 2rem); padding-bottom: 5rem; max-width: 860px; }
+  .legal-header { margin-bottom: 3rem; padding-bottom: 2rem; }
+  .legal-title { font-size: var(--font-size-3xl); font-weight: 700; color: var(--color-text); letter-spacing: var(--letter-spacing-tight); margin: 0 0 0.5rem; }
+  .legal-updated { font-size: var(--font-size-sm); color: var(--color-text-3); margin: 0; }
+  .legal-body { display: flex; flex-direction: column; }
+  .legal-section { padding: 2rem 0; }
+  .legal-section h2 { font-size: var(--font-size-xl); font-weight: 600; color: var(--color-text); margin: 0 0 1rem; letter-spacing: var(--letter-spacing-tight); }
+  .legal-section p { font-size: var(--font-size-sm); color: var(--color-text-2); line-height: var(--line-height-loose); margin: 0 0 1rem; }
+  .legal-section ul { margin: 0 0 1rem; padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.375rem; }
+  .legal-section li { font-size: var(--font-size-sm); color: var(--color-text-2); line-height: var(--line-height-normal); }
+  .legal-section a { color: var(--color-accent-from); text-decoration: none; }
+  .legal-section a:hover { text-decoration: underline; }
+  .tmdb-badge-link { display: inline-block; margin-top: 0.75rem; opacity: 0.85; }
+  .tmdb-badge-link:hover { opacity: 1; }
+</style>
