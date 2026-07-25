@@ -201,15 +201,24 @@ const initialFilters = {
   .poster-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 1.25rem;
+    column-gap: 1.5rem;
+    row-gap: 2rem;
   }
 
   @media (min-width: 640px) {
-    .poster-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .poster-grid {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      column-gap: 1.75rem;
+      row-gap: 2.25rem;
+    }
   }
 
   @media (min-width: 1024px) {
-    .poster-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+    .poster-grid {
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      column-gap: 2rem;
+      row-gap: 2.5rem;
+    }
   }
 
   .browse-error {
