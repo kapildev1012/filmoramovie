@@ -1,7 +1,12 @@
 // Custom Add-on Features — AI mood-based browsing + time-available filter.
 // The NexS_api credential is server-only and is never returned to the browser.
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { discoverMovies } from '../../lib/tmdb';
+
+// Worker secrets (server-only). NexS_api can't use astro:env (not UPPER_SNAKE_CASE),
+// so it's read from the Cloudflare Workers runtime env instead.
+const workerEnv = env as unknown as { NexS_api?: string; NEXS_MODEL?: string };
 
 export const prerender = false;
 
@@ -97,7 +102,7 @@ function parseNexosJson(content: string): NexosSelection {
   return JSON.parse(normalized) as NexosSelection;
 }
 
-export const POST: APIRoute = async ({ request, locals }) => {
+export const POST: APIRoute = async ({ request }) => {
   const limit = consumeRateLimit(clientKey(request));
   if (!limit.allowed) {
     return response(
@@ -152,7 +157,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     let reasons = new Map<number, string>();
     let source: 'nexos' | 'curated' = 'curated';
 
-    const nexosKey = locals.runtime.env.NexS_api;
+    const nexosKey = workerEnv.NexS_api;
     if (nexosKey) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -173,7 +178,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
             'User-Agent': 'FilmoraMovie/1.0 (+https://filmoramovie.com)',
           },
           body: JSON.stringify({
-            model: locals.runtime.env.NEXS_MODEL || 'GPT 4.1 mini',
+            model: workerEnv.NEXS_MODEL || 'GPT 4.1 mini',
             store: false,
             temperature: 0.35,
             max_completion_tokens: 420,
