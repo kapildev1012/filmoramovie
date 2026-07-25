@@ -97,7 +97,7 @@ function parseNexosJson(content: string): NexosSelection {
   return JSON.parse(normalized) as NexosSelection;
 }
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, locals }) => {
   const limit = consumeRateLimit(clientKey(request));
   if (!limit.allowed) {
     return response(
@@ -126,12 +126,16 @@ export const POST: APIRoute = async ({ request }) => {
   const moodConfig = MOODS[mood];
 
   try {
+    // Pull real, well-known titles: filter to a solid vote floor so we never
+    // surface obscure single-vote entries, and vary the page (1-3) so repeat
+    // taps feel fresh while every page stays high-quality.
     const catalog = await discoverMovies({
       sort_by: mood === 'surprise' ? 'popularity.desc' : 'vote_average.desc',
       with_genres: moodConfig.genres,
-      with_runtime_lte: minutes,
+      'with_runtime.lte': minutes,
       'vote_average.gte': 6,
-      page: 1,
+      'vote_count.gte': 200,
+      page: Math.floor(Math.random() * 3) + 1,
     });
 
     const candidates = catalog.results
@@ -148,7 +152,7 @@ export const POST: APIRoute = async ({ request }) => {
     let reasons = new Map<number, string>();
     let source: 'nexos' | 'curated' = 'curated';
 
-    const nexosKey = import.meta.env.NexS_api as string | undefined;
+    const nexosKey = locals.runtime.env.NexS_api;
     if (nexosKey) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -169,7 +173,7 @@ export const POST: APIRoute = async ({ request }) => {
             'User-Agent': 'FilmoraMovie/1.0 (+https://filmoramovie.com)',
           },
           body: JSON.stringify({
-            model: (import.meta.env.NEXS_MODEL as string | undefined) || 'GPT 4.1 mini',
+            model: locals.runtime.env.NEXS_MODEL || 'GPT 4.1 mini',
             store: false,
             temperature: 0.35,
             max_completion_tokens: 420,

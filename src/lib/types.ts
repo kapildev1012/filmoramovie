@@ -250,9 +250,10 @@ export interface DiscoverMovieParams {
   'primary_release_date.gte'?: string;
   'primary_release_date.lte'?: string;
   'vote_average.gte'?: number;
+  'vote_count.gte'?: number;
   with_original_language?: string;
-  with_runtime_gte?: number;
-  with_runtime_lte?: number;
+  'with_runtime.gte'?: number;
+  'with_runtime.lte'?: number;
   year?: number;
 }
 

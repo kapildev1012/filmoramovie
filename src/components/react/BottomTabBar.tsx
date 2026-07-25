@@ -107,9 +107,6 @@ export default function BottomTabBar() {
               aria-label={tab.label}
               aria-current={active ? "page" : undefined}
             >
-              {/* Active pill background */}
-              {active && <span className="btb-pill-bg" aria-hidden="true" />}
-
               <span className="btb-icon">
                 {tab.href === "/watchlist" && watchlistCount > 0 && (
                   <span className="btb-badge" aria-label={`${watchlistCount} items`}>
@@ -183,29 +180,6 @@ export default function BottomTabBar() {
           .btb-tab--active { color: #fff; }
           html[data-theme="light"] .btb-tab--active { color: #18181b; }
 
-          /* Active pill highlight behind icon */
-          .btb-pill-bg {
-            position: absolute;
-            top: 6px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, rgba(99,102,241,0.22), rgba(168,85,247,0.18));
-            border: 1px solid rgba(99,102,241,0.3);
-            pointer-events: none;
-            animation: btb-pop 0.28s cubic-bezier(0.16,1,0.3,1) both;
-          }
-          html[data-theme="light"] .btb-pill-bg {
-            background: linear-gradient(135deg, rgba(99,102,241,0.14), rgba(168,85,247,0.12));
-            border-color: rgba(99,102,241,0.25);
-          }
-          @keyframes btb-pop {
-            from { transform: translateX(-50%) scale(0.6); opacity: 0; }
-            to   { transform: translateX(-50%) scale(1);   opacity: 1; }
-          }
-
           /* Icon container */
           .btb-icon {
             position: relative;
@@ -255,7 +229,6 @@ export default function BottomTabBar() {
         /* Reduced motion */
         @media (prefers-reduced-motion: reduce) {
           .btb-tab { transition: color 0s; }
-          .btb-pill-bg { animation: none; }
         }
       `}</style>
     </>
