@@ -3,7 +3,8 @@ import type { APIRoute } from 'astro';
 import { getGoogleOAuth } from '../../../../lib/oauth';
 import { upsertUser, createSession, getProfilesByUserId, createProfile, SESSION_COOKIE } from '../../../../lib/db';
 
-export const GET: APIRoute = async ({ url, request }) => {
+export const GET: APIRoute = async ({ url, request, locals }) => {
+  const db = locals.runtime.env.DB;
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
 
@@ -51,7 +52,7 @@ export const GET: APIRoute = async ({ url, request }) => {
     };
 
     // Upsert user in DB
-    const user = upsertUser({
+    const user = await upsertUser(db, {
       google_id: googleUser.sub,
       email: googleUser.email,
       name: googleUser.name,
@@ -59,9 +60,9 @@ export const GET: APIRoute = async ({ url, request }) => {
     });
 
     // Create a default profile if this is the user's first sign-in
-    const profiles = getProfilesByUserId(user.id);
+    const profiles = await getProfilesByUserId(db, user.id);
     if (profiles.length === 0) {
-      createProfile({
+      await createProfile(db, {
         user_id: user.id,
         name: user.name.split(' ')[0] ?? user.name,
         avatar_color: '#4285F4',
@@ -71,7 +72,7 @@ export const GET: APIRoute = async ({ url, request }) => {
     }
 
     // Create session
-    const session = createSession(user.id);
+    const session = await createSession(db, user.id);
 
     // Build redirect — send user to /profile on first login, else /
     const redirectTo = profiles.length === 0 ? '/profile' : '/';

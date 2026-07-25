@@ -1,0 +1,19 @@
+#:schema node_modules/wrangler/config-schema.json
+# Root wrangler config. The Astro Cloudflare adapter reads this at build time
+# for bindings + astro:env vars, and `wrangler deploy` is redirected to the
+# generated ./dist/server/wrangler.json (see .wrangler/deploy/config.json).
+name = "filmoramovie"
+compatibility_date = "2026-04-15"
+compatibility_flags = ["nodejs_compat"]
+
+# ─── D1 (SQLite) ─────────────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "filmora"
+database_id = "6bea1d47-d533-4b54-9e68-3ceaccee60cb"
+migrations_dir = "migrations"
+
+# ─── KV (Astro sessions — auto-used by the Cloudflare adapter) ────
+[[kv_namespaces]]
+binding = "SESSION"
+id = "368c60ab1efa42adb88ce37502f1791c"

@@ -1,5 +1,6 @@
 // src/pages/api/search.ts — TMDB search proxy endpoint
 import type { APIRoute } from 'astro';
+import { TMDB_API_KEY } from 'astro:env/server';
 
 export const GET: APIRoute = async ({ url }) => {
   const q = url.searchParams.get('q')?.trim();
@@ -12,7 +13,7 @@ export const GET: APIRoute = async ({ url }) => {
     });
   }
 
-  const apiKey = import.meta.env.TMDB_API_KEY;
+  const apiKey = TMDB_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'TMDB API key not configured' }), {
       status: 500,

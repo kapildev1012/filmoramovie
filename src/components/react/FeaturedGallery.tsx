@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import InfiniteGallery from '../ui/3d-gallery-photography';
 
 interface Props {
@@ -48,6 +49,26 @@ const DEMO_IMAGES = [
  * Prop `images` is optional; if omitted the demo images are used.
  */
 export default function FeaturedGallery({ images }: Props) {
+  // Hide this heavy 3D WebGL gallery on mobile (≤768px). Mirrors the
+  // matchMedia convention used in MoodMatch; returning null means the
+  // Three.js canvas never mounts on phones. The initial state is resolved
+  // synchronously from matchMedia (this is a client:only island, so `window`
+  // is always available on first render) — that way the WebGL canvas is never
+  // even briefly mounted on phones, avoiding a flash and the Three.js cost.
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobile(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  if (isMobile) return null;
+
   // Convert plain string URLs to the { src, alt } format the gallery expects.
   const galleryImages =
     images && images.length

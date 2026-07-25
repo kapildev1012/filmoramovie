@@ -7,8 +7,9 @@ import {
   removeFromWatchlist,
 } from '../../../lib/db';
 
-export const POST: APIRoute = async ({ request }) => {
-  const session = getSessionFromRequest(request);
+export const POST: APIRoute = async ({ request, locals }) => {
+  const db = locals.runtime.env.DB;
+  const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
@@ -41,7 +42,7 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Use the default profile
-  const profiles = getProfilesByUserId(session.user.id);
+  const profiles = await getProfilesByUserId(db, session.user.id);
   const defaultProfile = profiles.find((p) => p.is_default) ?? profiles[0];
   if (!defaultProfile) {
     return new Response(JSON.stringify({ error: 'No profile found' }), {
@@ -51,7 +52,7 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    addToWatchlist(defaultProfile.id, tmdbId, mediaType, title, posterPath ?? null);
+    await addToWatchlist(db, defaultProfile.id, tmdbId, mediaType, title, posterPath ?? null);
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -64,8 +65,9 @@ export const POST: APIRoute = async ({ request }) => {
   }
 };
 
-export const DELETE: APIRoute = async ({ request }) => {
-  const session = getSessionFromRequest(request);
+export const DELETE: APIRoute = async ({ request, locals }) => {
+  const db = locals.runtime.env.DB;
+  const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
@@ -97,7 +99,7 @@ export const DELETE: APIRoute = async ({ request }) => {
     });
   }
 
-  const profiles = getProfilesByUserId(session.user.id);
+  const profiles = await getProfilesByUserId(db, session.user.id);
   const defaultProfile = profiles.find((p) => p.is_default) ?? profiles[0];
   if (!defaultProfile) {
     return new Response(JSON.stringify({ error: 'No profile found' }), {
@@ -107,7 +109,7 @@ export const DELETE: APIRoute = async ({ request }) => {
   }
 
   try {
-    removeFromWatchlist(defaultProfile.id, tmdbId, mediaType);
+    await removeFromWatchlist(db, defaultProfile.id, tmdbId, mediaType);
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

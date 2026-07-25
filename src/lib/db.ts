@@ -1,45 +1,26 @@
 /**
- * src/lib/db.ts — SQLite database connection via better-sqlite3
+ * src/lib/db.ts — Cloudflare D1 (SQLite) data layer.
  *
- * Database file location is set by DB_PATH env var (defaults to filmora.db in project root).
- * On first run, the schema is automatically applied.
+ * D1 is async and has no filesystem/native driver, so every function is async
+ * and takes the D1 binding as its first argument. Obtain the binding from the
+ * request context:
+ *
+ *   // .astro pages
+ *   const db = Astro.locals.runtime.env.DB;
+ *   // API routes
+ *   export const GET: APIRoute = async ({ locals }) => { const db = locals.runtime.env.DB; ... }
+ *
+ * The schema lives in migrations/0001_init.sql and is applied with
+ * `wrangler d1 migrations apply filmora` — it is not applied at runtime.
  */
 
-import Database from 'better-sqlite3';
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
-
-const DB_PATH = import.meta.env.DB_PATH || join(process.cwd(), 'filmora.db');
-const SCHEMA_PATH = join(process.cwd(), 'schema.sql');
-
-let _db: Database.Database | null = null;
-
-function getDb(): Database.Database {
-  if (_db) return _db;
-
-  _db = new Database(DB_PATH, {
-    // Verbose logging only in dev mode
-    verbose: import.meta.env.DEV ? (msg) => console.debug('[db]', msg) : undefined,
-  });
-
-  // Apply schema on first connect (idempotent — uses IF NOT EXISTS)
-  if (existsSync(SCHEMA_PATH)) {
-    const schema = readFileSync(SCHEMA_PATH, 'utf-8');
-    _db.exec(schema);
-  }
-
-  return _db;
-}
-
-export default getDb;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-import { randomBytes } from 'crypto';
-
-/** Generate a URL-safe random ID (24 chars) */
+/** Generate a URL-safe random ID (24 chars) using WebCrypto (Workers-safe). */
 export function generateId(): string {
-  return randomBytes(18).toString('base64url');
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 // ─── User operations ─────────────────────────────────────────────────────────
@@ -53,34 +34,33 @@ export interface DBUser {
   created_at: string;
 }
 
-export function getUserByGoogleId(googleId: string): DBUser | null {
-  const db = getDb();
-  return db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId) as DBUser | null;
+export async function getUserByGoogleId(db: D1Database, googleId: string): Promise<DBUser | null> {
+  return await db.prepare('SELECT * FROM users WHERE google_id = ?').bind(googleId).first<DBUser>();
 }
 
-export function getUserById(id: string): DBUser | null {
-  const db = getDb();
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as DBUser | null;
+export async function getUserById(db: D1Database, id: string): Promise<DBUser | null> {
+  return await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<DBUser>();
 }
 
-export function createUser(data: Omit<DBUser, 'id' | 'created_at'>): DBUser {
-  const db = getDb();
+export async function createUser(db: D1Database, data: Omit<DBUser, 'id' | 'created_at'>): Promise<DBUser> {
   const id = generateId();
-  db.prepare(
-    'INSERT INTO users (id, google_id, email, name, avatar_url) VALUES (?, ?, ?, ?, ?)'
-  ).run(id, data.google_id, data.email, data.name, data.avatar_url);
-  return getUserById(id)!;
+  await db
+    .prepare('INSERT INTO users (id, google_id, email, name, avatar_url) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, data.google_id, data.email, data.name, data.avatar_url)
+    .run();
+  return (await getUserById(db, id))!;
 }
 
-export function upsertUser(data: Omit<DBUser, 'id' | 'created_at'>): DBUser {
-  const existing = getUserByGoogleId(data.google_id);
+export async function upsertUser(db: D1Database, data: Omit<DBUser, 'id' | 'created_at'>): Promise<DBUser> {
+  const existing = await getUserByGoogleId(db, data.google_id);
   if (existing) {
-    const db = getDb();
-    db.prepare('UPDATE users SET email = ?, name = ?, avatar_url = ? WHERE id = ?')
-      .run(data.email, data.name, data.avatar_url, existing.id);
-    return getUserById(existing.id)!;
+    await db
+      .prepare('UPDATE users SET email = ?, name = ?, avatar_url = ? WHERE id = ?')
+      .bind(data.email, data.name, data.avatar_url, existing.id)
+      .run();
+    return (await getUserById(db, existing.id))!;
   }
-  return createUser(data);
+  return createUser(db, data);
 }
 
 // ─── Session operations ───────────────────────────────────────────────────────
@@ -91,26 +71,38 @@ export interface DBSession {
   expires_at: number; // unix seconds
 }
 
-export function createSession(userId: string): DBSession {
-  const db = getDb();
+export async function createSession(db: D1Database, userId: string): Promise<DBSession> {
   const id = generateId();
   const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30; // 30 days
-  db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
-    .run(id, userId, expiresAt);
+  await db
+    .prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
+    .bind(id, userId, expiresAt)
+    .run();
   return { id, user_id: userId, expires_at: expiresAt };
 }
 
-export function getSession(sessionId: string): (DBSession & { user: DBUser }) | null {
-  const db = getDb();
+export async function getSession(
+  db: D1Database,
+  sessionId: string
+): Promise<(DBSession & { user: DBUser }) | null> {
   const now = Math.floor(Date.now() / 1000);
-  const row = db.prepare(`
-    SELECT s.*, u.google_id, u.email, u.name, u.avatar_url, u.created_at as user_created_at
-    FROM sessions s
-    JOIN users u ON u.id = s.user_id
-    WHERE s.id = ? AND s.expires_at > ?
-  `).get(sessionId, now) as (DBSession & {
-    google_id: string; email: string; name: string; avatar_url: string | null; user_created_at: string;
-  }) | null;
+  const row = await db
+    .prepare(`
+      SELECT s.*, u.google_id, u.email, u.name, u.avatar_url, u.created_at as user_created_at
+      FROM sessions s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.id = ? AND s.expires_at > ?
+    `)
+    .bind(sessionId, now)
+    .first<
+      DBSession & {
+        google_id: string;
+        email: string;
+        name: string;
+        avatar_url: string | null;
+        user_created_at: string;
+      }
+    >();
 
   if (!row) return null;
   return {
@@ -128,18 +120,18 @@ export function getSession(sessionId: string): (DBSession & { user: DBUser }) | 
   };
 }
 
-export function deleteSession(sessionId: string): void {
-  getDb().prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+export async function deleteSession(db: D1Database, sessionId: string): Promise<void> {
+  await db.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
 }
 
-export function deleteAllUserSessions(userId: string): void {
-  getDb().prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+export async function deleteAllUserSessions(db: D1Database, userId: string): Promise<void> {
+  await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run();
 }
 
-/** Refresh session expiry (rolling session) */
-export function refreshSession(sessionId: string): void {
+/** Refresh session expiry (rolling session). */
+export async function refreshSession(db: D1Database, sessionId: string): Promise<void> {
   const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
-  getDb().prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(expiresAt, sessionId);
+  await db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').bind(expiresAt, sessionId).run();
 }
 
 // ─── Profile operations ───────────────────────────────────────────────────────
@@ -154,29 +146,39 @@ export interface DBProfile {
   created_at: string;
 }
 
-export function getProfilesByUserId(userId: string): DBProfile[] {
-  return getDb().prepare('SELECT * FROM profiles WHERE user_id = ? ORDER BY is_default DESC, created_at ASC').all(userId) as DBProfile[];
+export async function getProfilesByUserId(db: D1Database, userId: string): Promise<DBProfile[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM profiles WHERE user_id = ? ORDER BY is_default DESC, created_at ASC')
+    .bind(userId)
+    .all<DBProfile>();
+  return results;
 }
 
-export function getProfileById(id: string): DBProfile | null {
-  return getDb().prepare('SELECT * FROM profiles WHERE id = ?').get(id) as DBProfile | null;
+export async function getProfileById(db: D1Database, id: string): Promise<DBProfile | null> {
+  return await db.prepare('SELECT * FROM profiles WHERE id = ?').bind(id).first<DBProfile>();
 }
 
-export function createProfile(data: Omit<DBProfile, 'id' | 'created_at'>): DBProfile {
-  const db = getDb();
-  const existing = getProfilesByUserId(data.user_id);
+export async function createProfile(
+  db: D1Database,
+  data: Omit<DBProfile, 'id' | 'created_at'>
+): Promise<DBProfile> {
+  const existing = await getProfilesByUserId(db, data.user_id);
   if (existing.length >= 5) {
     throw new Error('Maximum 5 profiles per account');
   }
   const id = generateId();
-  db.prepare(
-    'INSERT INTO profiles (id, user_id, name, avatar_color, is_kids, is_default) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, data.user_id, data.name, data.avatar_color, data.is_kids ? 1 : 0, data.is_default ? 1 : 0);
-  return getProfileById(id)!;
+  await db
+    .prepare('INSERT INTO profiles (id, user_id, name, avatar_color, is_kids, is_default) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(id, data.user_id, data.name, data.avatar_color, data.is_kids ? 1 : 0, data.is_default ? 1 : 0)
+    .run();
+  return (await getProfileById(db, id))!;
 }
 
-export function updateProfile(id: string, data: Partial<Pick<DBProfile, 'name' | 'avatar_color' | 'is_kids'>>): void {
-  const db = getDb();
+export async function updateProfile(
+  db: D1Database,
+  id: string,
+  data: Partial<Pick<DBProfile, 'name' | 'avatar_color' | 'is_kids'>>
+): Promise<void> {
   const fields: string[] = [];
   const vals: (string | number)[] = [];
   if (data.name !== undefined) { fields.push('name = ?'); vals.push(data.name); }
@@ -184,20 +186,19 @@ export function updateProfile(id: string, data: Partial<Pick<DBProfile, 'name' |
   if (data.is_kids !== undefined) { fields.push('is_kids = ?'); vals.push(data.is_kids); }
   if (fields.length === 0) return;
   vals.push(id);
-  db.prepare(`UPDATE profiles SET ${fields.join(', ')} WHERE id = ?`).run(...vals);
+  await db.prepare(`UPDATE profiles SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
 }
 
-export function deleteProfile(id: string): void {
-  getDb().prepare('DELETE FROM profiles WHERE id = ?').run(id);
+export async function deleteProfile(db: D1Database, id: string): Promise<void> {
+  await db.prepare('DELETE FROM profiles WHERE id = ?').bind(id).run();
 }
 
-export function setDefaultProfile(userId: string, profileId: string): void {
-  const db = getDb();
-  const txn = db.transaction(() => {
-    db.prepare('UPDATE profiles SET is_default = 0 WHERE user_id = ?').run(userId);
-    db.prepare('UPDATE profiles SET is_default = 1 WHERE id = ?').run(profileId);
-  });
-  txn();
+export async function setDefaultProfile(db: D1Database, userId: string, profileId: string): Promise<void> {
+  // D1 batch runs statements atomically (single transaction).
+  await db.batch([
+    db.prepare('UPDATE profiles SET is_default = 0 WHERE user_id = ?').bind(userId),
+    db.prepare('UPDATE profiles SET is_default = 1 WHERE id = ?').bind(profileId),
+  ]);
 }
 
 // ─── Watchlist operations ────────────────────────────────────────────────────
@@ -212,37 +213,52 @@ export interface DBWatchlistEntry {
   added_at: string;
 }
 
-export function getWatchlist(profileId: string): DBWatchlistEntry[] {
-  return getDb().prepare(
-    'SELECT * FROM watchlist WHERE profile_id = ? ORDER BY added_at DESC'
-  ).all(profileId) as DBWatchlistEntry[];
+export async function getWatchlist(db: D1Database, profileId: string): Promise<DBWatchlistEntry[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM watchlist WHERE profile_id = ? ORDER BY added_at DESC')
+    .bind(profileId)
+    .all<DBWatchlistEntry>();
+  return results;
 }
 
-export function isInWatchlist(profileId: string, tmdbId: number, mediaType: 'movie' | 'tv'): boolean {
-  const row = getDb().prepare(
-    'SELECT 1 FROM watchlist WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?'
-  ).get(profileId, tmdbId, mediaType);
+export async function isInWatchlist(
+  db: D1Database,
+  profileId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv'
+): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT 1 FROM watchlist WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?')
+    .bind(profileId, tmdbId, mediaType)
+    .first();
   return !!row;
 }
 
-export function addToWatchlist(
+export async function addToWatchlist(
+  db: D1Database,
   profileId: string,
   tmdbId: number,
   mediaType: 'movie' | 'tv',
   title: string,
   posterPath: string | null
-): void {
-  const db = getDb();
+): Promise<void> {
   const id = generateId();
-  db.prepare(
-    'INSERT OR IGNORE INTO watchlist (id, profile_id, tmdb_id, media_type, title, poster_path) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, profileId, tmdbId, mediaType, title, posterPath);
+  await db
+    .prepare('INSERT OR IGNORE INTO watchlist (id, profile_id, tmdb_id, media_type, title, poster_path) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(id, profileId, tmdbId, mediaType, title, posterPath)
+    .run();
 }
 
-export function removeFromWatchlist(profileId: string, tmdbId: number, mediaType: 'movie' | 'tv'): void {
-  getDb().prepare(
-    'DELETE FROM watchlist WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?'
-  ).run(profileId, tmdbId, mediaType);
+export async function removeFromWatchlist(
+  db: D1Database,
+  profileId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv'
+): Promise<void> {
+  await db
+    .prepare('DELETE FROM watchlist WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?')
+    .bind(profileId, tmdbId, mediaType)
+    .run();
 }
 
 // ─── Rating operations ───────────────────────────────────────────────────────
@@ -257,32 +273,47 @@ export interface DBRating {
   updated_at: string;
 }
 
-export function getRating(profileId: string, tmdbId: number, mediaType: 'movie' | 'tv'): number | null {
-  const row = getDb().prepare(
-    'SELECT rating FROM ratings WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?'
-  ).get(profileId, tmdbId, mediaType) as { rating: number } | null;
+export async function getRating(
+  db: D1Database,
+  profileId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv'
+): Promise<number | null> {
+  const row = await db
+    .prepare('SELECT rating FROM ratings WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?')
+    .bind(profileId, tmdbId, mediaType)
+    .first<{ rating: number }>();
   return row?.rating ?? null;
 }
 
-export function setRating(
+export async function setRating(
+  db: D1Database,
   profileId: string,
   tmdbId: number,
   mediaType: 'movie' | 'tv',
   rating: number
-): void {
-  const db = getDb();
+): Promise<void> {
   const id = generateId();
-  db.prepare(`
-    INSERT INTO ratings (id, profile_id, tmdb_id, media_type, rating)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT (profile_id, tmdb_id, media_type) DO UPDATE SET rating = excluded.rating, updated_at = datetime('now')
-  `).run(id, profileId, tmdbId, mediaType, rating);
+  await db
+    .prepare(`
+      INSERT INTO ratings (id, profile_id, tmdb_id, media_type, rating)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (profile_id, tmdb_id, media_type) DO UPDATE SET rating = excluded.rating, updated_at = datetime('now')
+    `)
+    .bind(id, profileId, tmdbId, mediaType, rating)
+    .run();
 }
 
-export function deleteRating(profileId: string, tmdbId: number, mediaType: 'movie' | 'tv'): void {
-  getDb().prepare(
-    'DELETE FROM ratings WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?'
-  ).run(profileId, tmdbId, mediaType);
+export async function deleteRating(
+  db: D1Database,
+  profileId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv'
+): Promise<void> {
+  await db
+    .prepare('DELETE FROM ratings WHERE profile_id = ? AND tmdb_id = ? AND media_type = ?')
+    .bind(profileId, tmdbId, mediaType)
+    .run();
 }
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
@@ -293,7 +324,10 @@ const SESSION_COOKIE = 'filmora_session';
  * Extract the current session from a request's cookies.
  * Returns null if no valid session is found.
  */
-export function getSessionFromRequest(request: Request): (DBSession & { user: DBUser }) | null {
+export async function getSessionFromRequest(
+  db: D1Database,
+  request: Request
+): Promise<(DBSession & { user: DBUser }) | null> {
   const cookieHeader = request.headers.get('cookie') ?? '';
   const cookies = Object.fromEntries(
     cookieHeader.split(';').map((c) => {
@@ -303,7 +337,7 @@ export function getSessionFromRequest(request: Request): (DBSession & { user: DB
   );
   const sessionId = cookies[SESSION_COOKIE];
   if (!sessionId) return null;
-  return getSession(sessionId);
+  return getSession(db, sessionId);
 }
 
 export { SESSION_COOKIE };

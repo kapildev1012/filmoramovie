@@ -4,15 +4,16 @@
  */
 
 import { Google } from 'arctic';
+import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } from 'astro:env/server';
 
 let _google: InstanceType<typeof Google> | null = null;
 
 export function getGoogleOAuth(): InstanceType<typeof Google> {
   if (_google) return _google;
 
-  const clientId = import.meta.env.GOOGLE_CLIENT_ID;
-  const clientSecret = import.meta.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = import.meta.env.GOOGLE_REDIRECT_URI || 'http://localhost:4321/api/auth/google/callback';
+  const clientId = GOOGLE_CLIENT_ID;
+  const clientSecret = GOOGLE_CLIENT_SECRET;
+  const redirectUri = GOOGLE_REDIRECT_URI || 'http://localhost:4321/api/auth/google/callback';
 
   if (!clientId || !clientSecret) {
     throw new Error(

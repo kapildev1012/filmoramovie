@@ -4,18 +4,21 @@ import Layout from '../layouts/Layout.astro';
 import { getSessionFromRequest, getProfilesByUserId, getWatchlist } from '../lib/db';
 
 // Auth gate
-const session = getSessionFromRequest(Astro.request);
+const db = Astro.locals.runtime.env.DB;
+const session = await getSessionFromRequest(db, Astro.request);
 if (!session) {
   return Astro.redirect('/login?return=/profile');
 }
 
 const user = session.user;
-const profiles = getProfilesByUserId(user.id);
+const profiles = await getProfilesByUserId(db, user.id);
 const activeProfile = profiles.find((p) => p.is_default) ?? profiles[0];
 
 // Get watchlist count for each profile
 const watchlistCounts = Object.fromEntries(
-  profiles.map((p) => [p.id, getWatchlist(p.id).length])
+  await Promise.all(
+    profiles.map(async (p) => [p.id, (await getWatchlist(db, p.id)).length] as const)
+  )
 );
 
 const AVATAR_COLORS = [

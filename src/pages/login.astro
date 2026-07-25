@@ -6,7 +6,8 @@ import { getSessionFromRequest } from '../lib/db';
 import { getTrendingMovies } from '../lib/tmdb';
 
 // Redirect if already logged in
-const session = getSessionFromRequest(Astro.request);
+const db = Astro.locals.runtime.env.DB;
+const session = await getSessionFromRequest(db, Astro.request);
 if (session) {
   return Astro.redirect('/profile');
 }

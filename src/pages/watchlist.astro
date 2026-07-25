@@ -5,17 +5,18 @@ import { getSessionFromRequest, getProfilesByUserId, getWatchlist } from '../lib
 import type { DBWatchlistEntry } from '../lib/db';
 
 // Auth gate
-const session = getSessionFromRequest(Astro.request);
+const db = Astro.locals.runtime.env.DB;
+const session = await getSessionFromRequest(db, Astro.request);
 if (!session) {
   return Astro.redirect('/login?return=/watchlist');
 }
 
-const profiles = getProfilesByUserId(session.user.id);
+const profiles = await getProfilesByUserId(db, session.user.id);
 const activeProfile = profiles.find((p) => p.is_default) ?? profiles[0];
 let entries: DBWatchlistEntry[] = [];
 
 if (activeProfile) {
-  entries = getWatchlist(activeProfile.id);
+  entries = await getWatchlist(db, activeProfile.id);
 }
 
 // Client-side filter params (handled server-side too for SEO/sharing)

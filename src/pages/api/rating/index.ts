@@ -2,8 +2,9 @@
 import type { APIRoute } from 'astro';
 import { getSessionFromRequest, getProfilesByUserId, setRating, deleteRating } from '../../../lib/db';
 
-export const POST: APIRoute = async ({ request }) => {
-  const session = getSessionFromRequest(request);
+export const POST: APIRoute = async ({ request, locals }) => {
+  const db = locals.runtime.env.DB;
+  const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
@@ -29,22 +30,23 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(JSON.stringify({ error: 'Rating must be 1–5' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
 
-  const profiles = getProfilesByUserId(session.user.id);
+  const profiles = await getProfilesByUserId(db, session.user.id);
   const profile = profiles.find((p) => p.is_default) ?? profiles[0];
   if (!profile) {
     return new Response(JSON.stringify({ error: 'No profile' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
 
   try {
-    setRating(profile.id, tmdbId, mediaType, rating);
+    await setRating(db, profile.id, tmdbId, mediaType, rating);
     return new Response(JSON.stringify({ ok: true, rating }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Failed to set rating' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 };
 
-export const DELETE: APIRoute = async ({ request }) => {
-  const session = getSessionFromRequest(request);
+export const DELETE: APIRoute = async ({ request, locals }) => {
+  const db = locals.runtime.env.DB;
+  const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
@@ -61,14 +63,14 @@ export const DELETE: APIRoute = async ({ request }) => {
     return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
 
-  const profiles = getProfilesByUserId(session.user.id);
+  const profiles = await getProfilesByUserId(db, session.user.id);
   const profile = profiles.find((p) => p.is_default) ?? profiles[0];
   if (!profile) {
     return new Response(JSON.stringify({ error: 'No profile' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
 
   try {
-    deleteRating(profile.id, tmdbId, mediaType as 'movie' | 'tv');
+    await deleteRating(db, profile.id, tmdbId, mediaType as 'movie' | 'tv');
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Failed to delete rating' }), { status: 500, headers: { 'Content-Type': 'application/json' } });

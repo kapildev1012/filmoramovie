@@ -11,6 +11,8 @@
 // (no PUBLIC_ prefix) is only available server-side, so it will be `undefined`
 // if imported into client code.
 
+import { EMBED_API_KEY as EMBED_API_KEY_ENV } from 'astro:env/server';
+
 /** CodeSpecter API base URL. */
 export const EMBED_BASE = 'https://api.codespecters.com';
 
@@ -26,9 +28,9 @@ export const IMG_BASE_LG = 'https://image.tmdb.org/t/p/w780';
  * without credentials.
  */
 export function getEmbedApiKey(): string {
-  const key = import.meta.env.EMBED_API_KEY;
+  const key = EMBED_API_KEY_ENV;
   if (!key) {
     throw new Error('EMBED_API_KEY environment variable is not set.');
   }
-  return key as string;
+  return key;
 }

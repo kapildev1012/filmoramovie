@@ -378,9 +378,13 @@
   /* ──────────────────────────────────────────
      FEATURED GALLERY + GALLERY SHOWCASE
   ────────────────────────────────────────── */
-  /* FeaturedGallery: shorter height on mobile */
+  /* FeaturedGallery ("I create; therefore I am"): fully removed on mobile.
+     The React island already returns null on phones (never mounting Three.js),
+     and hiding its .seo-block wrapper guarantees no residual whitespace or
+     layout gap on any mobile screen size. */
+  .seo-block,
   [aria-label="Featured gallery"] {
-    height: clamp(320px, 65vw, 480px) !important;
+    display: none !important;
   }
 
   /* GalleryShowcase: reduce from 100vh to something sensible */
@@ -390,15 +394,13 @@
     max-height: 520px;
   }
 
-  /* Gallery headlines: scale down */
-  [aria-label="Featured gallery"] h2,
+  /* Gallery headline: scale down */
   [aria-label="Gallery showcase"] h2 {
     font-size: clamp(1.5rem, 8vw, 2.75rem) !important;
     letter-spacing: -0.02em !important;
   }
 
   /* Touch hint: update text */
-  [aria-label="Featured gallery"] > div:last-child p:first-child,
   [aria-label="Gallery showcase"] > div:last-child p:first-child {
     font-size: 9px !important;
   }
@@ -637,7 +639,46 @@
   }
   .browse-count { font-size: 0.8125rem !important; }
 
-  /* Poster grid — clean 3-up on mobile */
+  /* ── Sort / Filter controls (FilterPanel) ──
+     Bottom-align the row so the "Sort by" label above the select never offsets
+     it from the label-less Filters / Clear-all buttons. All controls share a
+     consistent 44px tap height and even gaps — stays aligned on every phone. */
+  .browse-page .filter-panel { margin-bottom: 1.25rem !important; }
+  .browse-page .filter-top-row {
+    align-items: flex-end !important;
+    gap: 0.5rem !important;
+    flex-wrap: wrap !important;
+  }
+  .browse-page .filter-sort {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  .browse-page .filter-sort .filter-select { min-height: 44px; }
+  .browse-page .filter-toggle,
+  .browse-page .filter-reset {
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+
+  /* ── Poster grid — clean, centered two-up layout ──
+     Exactly two columns, both cells equal (1fr). The gutter between the cards
+     equals the container's edge padding (--mob-pad-x), so the spacing between
+     the cards and each screen edge is symmetric. Cards fill their cell fully
+     (overriding the rail-oriented min/max-width) → identical dimensions. */
+  .browse-page .poster-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: var(--mob-pad-x) !important;
+    justify-items: stretch !important;
+    align-items: start !important;
+  }
+  .browse-page .poster-grid .poster-card {
+    min-width: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Non-browse poster grids (e.g. search results) keep the compact 3-up. */
   .poster-grid {
     grid-template-columns: repeat(3, 1fr) !important;
     gap: 0.625rem !important;

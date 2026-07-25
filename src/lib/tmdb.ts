@@ -26,9 +26,12 @@ import type {
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
+// Runtime secret — resolved from the Cloudflare Worker env (or .env locally).
+import { TMDB_API_KEY } from 'astro:env/server';
+
 /** Get the full API key from env. Throws if missing. */
 function getApiKey(): string {
-  const key = import.meta.env.TMDB_API_KEY;
+  const key = TMDB_API_KEY;
   if (!key) {
     throw new Error('TMDB_API_KEY environment variable is not set.');
   }
@@ -44,7 +47,19 @@ export function tmdbImage(
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }
 
-/** Internal fetch helper with error handling and caching headers */
+/** Internal fetch helper with error handling and caching.
+ *
+ * Two caching layers make server-rendered navigation fast (<250ms):
+ *  1. A module-level in-memory cache (per Worker isolate) memoises identical
+ *     GET responses for `ttlSeconds`. Genres / trending / discover pages that
+ *     repeat across navigations are served instantly without any network hop.
+ *  2. Cloudflare's `cf.cacheTtl` / `cacheEverything` hint caches the upstream
+ *     TMDB response at the edge, so even a cold isolate avoids a slow origin
+ *     round-trip. (The legacy Next.js `next.revalidate` hint was a no-op here.)
+ */
+const _memCache = new Map<string, { expires: number; data: unknown }>();
+const MEM_CACHE_MAX = 500;
+
 async function tmdbFetch<T>(
   endpoint: string,
   params: Record<string, string | number | boolean | undefined> = {},
@@ -61,18 +76,35 @@ async function tmdbFetch<T>(
     }
   }
 
-  const res = await fetch(url.toString(), {
+  const href = url.toString();
+
+  // 1. In-memory memoisation (keyed on the full URL incl. params).
+  const cached = _memCache.get(href);
+  if (cached && cached.expires > Date.now()) {
+    return cached.data as T;
+  }
+
+  const res = await fetch(href, {
     headers: { 'Content-Type': 'application/json' },
-    // Astro's cache hint for static pre-rendered pages
-    // @ts-ignore — Astro extends RequestInit with these
-    next: { revalidate: ttlSeconds },
+    // 2. Cloudflare edge cache — cache the upstream TMDB JSON for `ttlSeconds`.
+    // @ts-ignore — `cf` is a Cloudflare Workers RequestInit extension.
+    cf: { cacheTtl: ttlSeconds, cacheEverything: true },
   });
 
   if (!res.ok) {
     throw new Error(`TMDB API error ${res.status}: ${res.statusText} — ${endpoint}`);
   }
 
-  return res.json() as Promise<T>;
+  const data = (await res.json()) as T;
+
+  // Store in the in-memory cache with simple size-capped eviction.
+  if (_memCache.size >= MEM_CACHE_MAX) {
+    const oldestKey = _memCache.keys().next().value;
+    if (oldestKey !== undefined) _memCache.delete(oldestKey);
+  }
+  _memCache.set(href, { expires: Date.now() + ttlSeconds * 1000, data });
+
+  return data;
 }
 
 // ─── Trending ────────────────────────────────────────────────────────────────
