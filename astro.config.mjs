@@ -12,7 +12,7 @@ export default defineConfig({
   // exposes bindings (e.g. the D1 `DB` binding) on `Astro.locals.runtime.env`
   // during `astro dev`.
   adapter: cloudflare({
-    platformProxy: { enabled: true },
+    platformProxy: { enabled: false },  // disabled — wrangler hangs on this machine; re-enable when needed
   }),
   // Runtime secrets. On Cloudflare, import.meta.env does NOT contain secrets —
   // astro:env reads them from the Worker runtime env (wrangler secrets / .dev.vars)
