@@ -125,6 +125,19 @@ export default function WatchNow({
   const [reloadKey, setReloadKey] = useState(0);
   const [upNextDismissed, setUpNextDismissed] = useState(false);
 
+  // ── Transient status line ─────────────────────────────────────────────────
+  // Used for silent recovery (a server fell over and we moved on). Deliberately
+  // a toast and not an error card: the viewer's video is playing, so the message
+  // explains and then gets out of the way.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+  const showToast = useCallback((text: string) => {
+    setToast(text);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 4500);
+  }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
   // ── Series state ──────────────────────────────────────────────────────────
   /**
    * The island never trusts the season list to be usable. A caller may pass an
@@ -180,15 +193,30 @@ export default function WatchNow({
   }, [numericId, mediaType, isSeries, effectiveSeasons]);
 
   // ── Streaming servers (embed engine only) ─────────────────────────────────
-  const { servers, server, setServer, status: serverStatus, confirmLive } =
-    useEmbedServers({
-      type: isSeries ? 'tv' : 'movie',
-      id,
-      season: current?.season ?? null,
-      episode: current?.episode ?? null,
-      enabled: engine === 'embed' && (!isSeries || current !== null),
-      preferred: preferredServer,
-    });
+  // The hook ranks the list and makes the automatic pick; this island only says
+  // which title it wants and reacts to outcomes. See serverRanking.ts for the
+  // order of precedence behind "best".
+  const {
+    servers,
+    ranked,
+    recommended,
+    isAuto,
+    server,
+    setServer,
+    chooseServer,
+    useAutoServer,
+    reportOutcome,
+    resetTried,
+    status: serverStatus,
+    confirmLive,
+  } = useEmbedServers({
+    type: isSeries ? 'tv' : 'movie',
+    id,
+    season: current?.season ?? null,
+    episode: current?.episode ?? null,
+    enabled: engine === 'embed' && (!isSeries || current !== null),
+    preferred: preferredServer,
+  });
 
   // ── Season fetching ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -367,34 +395,62 @@ export default function WatchNow({
   const { snapshot, caps, setMenu, prefs } = api;
 
   // Any message from a provider frame is proof it is alive for this title —
-  // stronger evidence than the backend probe can get.
+  // stronger evidence than the backend probe can get. It is also a real success
+  // for the reliability ledger, which is what makes tomorrow's automatic pick
+  // better than today's.
+  //
+  // AUDIO ON THE EMBED SERVERS. Volume is relayed into the frame (every dialect
+  // those players are plausibly built on — see adapters/embed.ts), but none of
+  // the four providers publishes an INBOUND command API: VidLink documents
+  // MEDIA_DATA / PLAYER_EVENT going frame → parent only, and the others document
+  // nothing at all. So a server that starts its own player muted can only be
+  // unmuted from inside the frame, and pretending otherwise would be a lie about
+  // a cross-origin document. The viewer therefore gets told, once per session,
+  // where the sound control actually lives.
+  const audioHintShown = useRef(false);
   useEffect(() => {
-    if (engine === 'embed' && snapshot.live && server) confirmLive(server);
-  }, [engine, snapshot.live, server, confirmLive]);
+    if (engine === 'embed' && snapshot.live && server) {
+      confirmLive(server);
+      reportOutcome(server, true);
+      if (!audioHintShown.current && caps.volume === 'relay') {
+        audioHintShown.current = true;
+        showToast(t('embedAudioHint'));
+      }
+    }
+    // `reportOutcome` is intentionally excluded: it changes identity whenever the
+    // server list changes, and re-running this on that would re-record a success.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, snapshot.live, server, confirmLive, caps.volume, showToast, t]);
 
   // Auto-failover: an embed frame that errors (or never loads — see the embed
-  // adapter's load timeout) advances to the next server by itself rather than
-  // leaving a dead rectangle. We track every server already tried for the
-  // current title and move to the first UNtried one, preferring servers the
-  // backend probe found online. When every server has been tried the error card
-  // stays put (Reload / manual switch) instead of cycling dead frames forever.
-  const triedServers = useRef<Set<string>>(new Set());
+  // adapter's load timeout) advances to the NEXT-BEST server by itself rather
+  // than leaving a dead rectangle. `reportOutcome` records the failure (both for
+  // this title and in the long-lived reliability ledger) and returns the best
+  // server not yet tried for this title; when every server has been tried the
+  // error card stays put (Reload / manual switch) instead of cycling dead frames
+  // forever.
+  //
+  // The `failoverFor` guard is load-bearing: this effect also re-runs on the
+  // commit right after `setServer`, when `snapshot.status` is still the stale
+  // 'error' from the previous render. Without the guard one failure would walk
+  // the entire server list in a single frame and land on the worst option.
+  const failoverFor = useRef<string>('');
   const [failedOver, setFailedOver] = useState(false);
   useEffect(() => {
     if (engine !== 'embed' || snapshot.status !== 'error' || !server) return;
-    triedServers.current.add(server);
-    const next =
-      [...servers]
-        .sort((a, b) => Number(b.online) - Number(a.online))
-        .find((s) => !triedServers.current.has(s.id))?.id ?? null;
-    if (next) {
-      setFailedOver(true);
-      setServer(next);
-      setPreferredServer(next);
-      setReloadKey((key) => key + 1);
-      remember({ server: next });
-    }
-  }, [engine, snapshot.status, server, servers, setServer, remember]);
+    if (failoverFor.current === sourceKey) return;
+    failoverFor.current = sourceKey;
+    const next = reportOutcome(server, false);
+    if (!next) return;
+    const name = servers.find((s) => s.id === next)?.name ?? next;
+    setFailedOver(true);
+    showToast(t('serverSwitched', { name }));
+    setServer(next);
+    setPreferredServer(next);
+    setReloadKey((key) => key + 1);
+    remember({ server: next });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, snapshot.status, server, sourceKey]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const start = useCallback(() => {
@@ -409,9 +465,10 @@ export default function WatchNow({
     setEndedFlag(false);
     // Manual retry: give the current server a genuine fresh attempt and re-enable
     // the full failover walk.
-    triedServers.current = new Set();
+    resetTried();
+    failoverFor.current = '';
     setReloadKey((key) => key + 1);
-  }, []);
+  }, [resetTried]);
 
   const switchEngine = useCallback(
     (next: EngineId) => {
@@ -425,18 +482,29 @@ export default function WatchNow({
 
   const switchServer = useCallback(
     (next: string) => {
-      setServer(next);
+      // A deliberate pick, remembered for this title for the whole session so no
+      // re-render, refetch or unrelated island can drop it back to auto-best.
+      chooseServer(next);
       setPreferredServer(next);
       setFailedOver(false);
-      // A deliberate pick is a fresh start: let auto-failover try every server
-      // again from here if this one also fails.
-      triedServers.current = new Set();
+      failoverFor.current = '';
       setEndedFlag(false);
       setReloadKey((key) => key + 1);
       remember({ server: next });
     },
-    [setServer, remember]
+    [chooseServer, remember]
   );
+
+  /** Hand selection back to the ranking (the "Auto" pill). */
+  const switchToAuto = useCallback(() => {
+    const best = useAutoServer();
+    if (!best) return;
+    setPreferredServer(best);
+    setFailedOver(false);
+    failoverFor.current = '';
+    setReloadKey((key) => key + 1);
+    remember({ server: best });
+  }, [useAutoServer, remember]);
 
   const playEpisode = useCallback(
     (season: number, episode: number) => {
@@ -447,12 +515,13 @@ export default function WatchNow({
       setUpNextDismissed(false);
       // New episode = new title context; a server that failed for the previous
       // one may serve this one, so let failover reconsider all of them.
-      triedServers.current = new Set();
+      resetTried();
+      failoverFor.current = '';
       setStarted(true);
       setMenu(null);
       setReloadKey((key) => key + 1);
     },
-    [setMenu]
+    [setMenu, resetTried]
   );
 
   const replay = useCallback(() => {
@@ -532,12 +601,17 @@ export default function WatchNow({
   );
 
   // ── Chrome data ───────────────────────────────────────────────────────────
-  const serverOptions: ServerOption[] = servers.map((s) => ({
+  // Ranked order, so the bar reads best-first and the badge on the leader is the
+  // truth about what "Auto" would play.
+  const serverOptions: ServerOption[] = ranked.map(({ server: s, reason }) => ({
     id: s.id,
     name: s.name,
     verified: s.verified,
     online: s.online,
     live: s.live,
+    qualityLabel: s.qualityLabel ?? null,
+    latencyMs: s.latencyMs ?? null,
+    failed: reason === 'failing',
   }));
 
   const subtitle = isSeries && current
@@ -605,19 +679,26 @@ export default function WatchNow({
             servers={serverOptions}
             activeServer={server}
             onServer={switchServer}
+            recommended={recommended}
+            isAuto={isAuto}
+            onAuto={switchToAuto}
             checking={serverStatus === 'checking'}
             t={t}
           />
         }
+        toast={toast}
         notice={
           <>
             {/* Honest statement of the engine's ceiling. Only shown for the
                 third-party iframe, and only once playback has started. */}
             {started && engine === 'embed' && (
-              <p className="fp-notice">
-                {t('tracksOnServerHint')}
-                {failedOver && ` ${t('reload')}: ${t('servers')}.`}
-              </p>
+              <p className="fp-notice">{t('tracksOnServerHint')}</p>
+            )}
+            {/* The toast that announced the fallback is gone within seconds; this
+                line stays, so a viewer who looked away still understands why they
+                are on a different server and how to change it. */}
+            {started && engine === 'embed' && failedOver && (
+              <p className="fp-notice">{t('serverFellBack')}</p>
             )}
           </>
         }

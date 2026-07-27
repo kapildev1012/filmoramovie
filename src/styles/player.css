@@ -189,11 +189,20 @@
 
 /* ───────────────────────────────────────────────────── Gesture zones ─── */
 
+/* Equal thirds of the STAGE, expressed as percentages so the double-tap targets
+   scale with the rendered player instead of being pinned to a pixel width that
+   would swallow the whole picture on a 375px phone.
+
+   Vertically the band comes from the SAME tokens the chrome uses, not from
+   percentages: a 390px-wide stage is only ~200px tall, and a percentage inset
+   left barely 60px of tappable picture there. Overlapping the control bar is
+   harmless because the bar sits at z-index 8 against the zones' 2 — a press on
+   the seek bar or a button can never be mistaken for a tap on the video. */
 .fp-zone {
   position: absolute;
-  top: 12%;
-  bottom: 28%; /* never cover the control bar or the provider's own bar */
-  width: 30%;
+  top: 2.75rem; /* clear of the top bar */
+  bottom: calc(var(--fp-bar-h) + 0.9rem);
+  width: 33.3333%;
   z-index: 2;
   touch-action: none;
 }
@@ -214,11 +223,99 @@
 }
 
 .fp-zone-centre {
-  left: 30%;
-  right: 30%;
-  top: 8%;
-  bottom: 24%;
+  left: 33.3333%;
+  right: 33.3333%;
+  top: 2.75rem;
+  bottom: calc(var(--fp-bar-h) + 0.9rem);
   width: auto;
+}
+
+/* ─── Double-tap ±10s ripple ───────────────────────────────────────────────
+   Positioned by inline left/top percentages computed from the stage's own
+   bounding box in PlayerShell, so the burst appears exactly where the finger or
+   cursor was at any viewport size. Never interactive: it must not swallow the
+   next tap of a repeated double-tap. */
+.fp-tap-ripple {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 8.5rem;
+  height: 8.5rem;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.fp-tap-ripple-burst {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.22) 0%, rgb(255 255 255 / 0) 70%);
+  animation: fp-ripple 520ms var(--fp-ease) forwards;
+}
+
+.fp-tap-ripple-label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 0.15rem;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+  animation: fp-ripple-label 520ms var(--fp-ease) forwards;
+}
+
+@keyframes fp-ripple {
+  0% {
+    opacity: 0;
+    transform: scale(0.45);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes fp-ripple-label {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+/* Phones: a 136px ripple would spill past a 375px-wide third, so scale it to the
+   zone rather than to the label. */
+@media (max-width: 30rem) {
+  .fp-tap-ripple {
+    width: 6rem;
+    height: 6rem;
+  }
+  .fp-tap-ripple-label {
+    font-size: 0.7rem;
+  }
+}
+
+/* Ultra-wide / fullscreen on a large display: keep the burst proportional. */
+@media (min-width: 90rem) {
+  .fp-tap-ripple {
+    width: 10.5rem;
+    height: 10.5rem;
+  }
 }
 
 /* ───────────────────────────────────────────────── HUD / feedback ─── */
@@ -359,6 +456,102 @@
   font-size: 0.78rem;
 }
 
+/* ───────────────────────────────────── Tap-to-unmute / toast ─── */
+
+/* Autoplay policy prompt. Sits above the control bar (so it never overlaps the
+   seek bar at any width) and is a real ≥44px touch target on every device, not a
+   tiny icon. Centred with a max-width so long translations wrap instead of
+   pushing the stage wider — no layout shift, the stage is position:relative and
+   this is absolute inside it. */
+.fp-unmute {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--fp-bar-h) + 1.75rem);
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(20rem, 86%);
+  min-height: var(--fp-btn-touch);
+  padding: 0 1rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--fp-panel-border);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.88);
+  color: var(--fp-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: pointer;
+  animation: fp-rise 260ms var(--fp-ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fp-unmute:hover {
+    background: rgb(0 0 0 / 0.96);
+    border-color: rgb(255 255 255 / 0.28);
+  }
+}
+
+.fp-unmute:focus-visible {
+  outline: 2px solid var(--fp-accent-to);
+  outline-offset: 2px;
+}
+
+.fp-unmute-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.fp-unmute-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Silent-recovery toast (server fallback). Same vertical band as the unmute
+   prompt but offset upward, so the two can coexist without overlapping. */
+.fp-toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--fp-bar-h) + 5rem);
+  z-index: 6;
+  max-width: min(26rem, 88%);
+  margin: 0;
+  padding: 0.5rem 0.85rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--fp-panel-border);
+  border-radius: 0.6rem;
+  background: rgb(0 0 0 / 0.86);
+  color: var(--fp-ink);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: center;
+  animation: fp-rise 260ms var(--fp-ease);
+}
+
+@keyframes fp-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.4rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Landscape phones have no vertical room to stack two overlays above the bar. */
+@media (max-height: 30rem) and (orientation: landscape) {
+  .fp-unmute {
+    bottom: calc(var(--fp-bar-h) + 1rem);
+  }
+  .fp-toast {
+    bottom: calc(var(--fp-bar-h) + 3.5rem);
+    font-size: 0.72rem;
+  }
+}
+
 /* ─────────────────────────────────────────────────────────── Errors ─── */
 
 .fp-error {
@@ -492,6 +685,17 @@
 .fp-stage.is-controls-visible .fp-controls {
   opacity: 1;
   transform: none;
+  /* The scrim stays transparent to pointers even when visible: its 2.5rem
+     gradient padding covers a third of a phone-sized stage, and letting empty
+     gradient swallow taps would leave the double-tap zones with almost no
+     surface. The real controls opt back in immediately below, and they sit above
+     the zones (z-index 8 vs 2), so a press on the seek bar, a button or an open
+     menu is never read as a tap on the video. */
+  pointer-events: none;
+}
+
+/* Seek bar, control row and menus: interactive. Empty scrim: not. */
+.fp-stage.is-controls-visible .fp-controls > * {
   pointer-events: auto;
 }
 
@@ -1522,6 +1726,168 @@
   background: var(--color-success, #22c55e);
 }
 
+/* ─── Quality / ranking badges ───────────────────────────────────────────────
+   Rendered only when the value is real: no quality badge appears while the data
+   model has no per-server resolution (see SERVER_QUALITY), rather than printing
+   an invented "1080p". */
+.fp-quality-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.3rem;
+  background: rgb(255 255 255 / 0.14);
+  color: inherit;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fp-quality-badge.is-best {
+  background: linear-gradient(135deg, var(--fp-accent-from), var(--fp-accent-to));
+  color: #fff;
+}
+
+.fp-pill.is-active .fp-quality-badge {
+  background: rgb(0 0 0 / 0.25);
+}
+
+/* A server that failed for this title stays selectable (a failed probe is not
+   proof) but reads as demoted. */
+.fp-pill.is-failed {
+  opacity: 0.55;
+}
+
+.fp-pill-auto {
+  border-style: dashed;
+}
+
+/* ─── Phone: server picker as a bottom sheet ─────────────────────────────────
+   A row of pills is either unreadable or unhittable at 375px, so below 40rem the
+   bar shows one full-width trigger and the list opens as a sheet with 44px rows.
+   Both presentations are the same component — see useCompactViewport. */
+.fp-server-trigger {
+  flex: 1 1 auto;
+  justify-content: space-between;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fp-server-trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-server-trigger-auto {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.3rem;
+  background: rgb(0 0 0 / 0.25);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.fp-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  background: rgb(0 0 0 / 0.55);
+  cursor: pointer;
+}
+
+.fp-server-sheet {
+  position: fixed;
+  z-index: 41;
+  inset: auto 0 0 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--fp-panel-border);
+  border-radius: 1rem 1rem 0 0;
+  background: var(--fp-panel);
+  color: var(--fp-ink);
+  animation: fp-sheet-up 220ms var(--fp-ease);
+  -webkit-overflow-scrolling: touch;
+}
+
+@keyframes fp-sheet-up {
+  from {
+    transform: translateY(1.5rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.fp-server-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.fp-server-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fp-server-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  /* 44px minimum: the whole row is the target, not just the label. */
+  min-height: var(--fp-btn-touch);
+  padding: 0.5rem 0.4rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.fp-server-row.is-active {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.fp-server-row.is-failed {
+  opacity: 0.6;
+}
+
+.fp-server-row:focus-visible {
+  outline: 2px solid var(--fp-accent-to);
+  outline-offset: -2px;
+}
+
+.fp-server-row-text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.fp-server-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.fp-server-row-meta {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--fp-ink-dim);
+}
+
 .fp-notice {
   margin: 0;
   font-size: 0.75rem;
@@ -1725,6 +2091,60 @@
   text-align: center;
 }
 
+/* ─── Phones: inline episode browser ─────────────────────────────────────────
+   The inline list under the player sits outside `.fp-root`, so its container
+   queries never match and it stays single-column on every width. On a phone the
+   default 0.4rem card padding reads cramped and the season pills are below a
+   comfortable tap size, so this block gives the boxes room, defines them with a
+   visible edge, lets the title wrap instead of truncating, and makes each season
+   tab a real 44px target. Scoped to the inline variant so the on-video overlay
+   (already a bottom sheet) is untouched. */
+@media (max-width: 40rem) {
+  .fp-episodes:not(.fp-episodes-overlay) {
+    gap: 0.85rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-season-tabs {
+    gap: 0.4rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-season-tab {
+    min-height: var(--fp-btn-touch);
+    padding: 0 0.95rem;
+    font-size: 0.8rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episode-list {
+    gap: 0.6rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episode {
+    gap: 0.75rem;
+    padding: 0.6rem;
+    border-color: rgb(255 255 255 / 0.08);
+    background: rgb(255 255 255 / 0.05);
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episode-thumb {
+    width: 7rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episode-meta {
+    gap: 0.2rem;
+    padding-block: 0.05rem;
+  }
+
+  /* Let the title use two lines on a narrow screen instead of clipping to one. */
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episode-name {
+    font-size: 0.88rem;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
 /* ───────────────────────────────────────────────────── Screen readers ─── */
 
 .fp-sr-live {
@@ -1807,10 +2227,20 @@
   .fp-menu,
   .fp-upnext,
   .fp-skip-marker,
+  .fp-server-sheet,
   .fp-episode-skeleton {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+  /* The ±10s ripple is a confirmation, not decoration. Its keyframes end at
+     opacity 0, so collapsing the duration would make it vanish before it was
+     ever seen. Drop the animation instead and let the JS lifetime (RIPPLE_MS)
+     control how long it stays. */
+  .fp-tap-ripple-burst,
+  .fp-tap-ripple-label {
+    animation: none !important;
+    opacity: 1;
   }
   /* The spinner must still convey "working", so it keeps rotating — slowly. */
   .fp-spinner-ring {

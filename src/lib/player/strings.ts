@@ -28,6 +28,8 @@ export type PlayerStringKey =
   | 'seek' | 'forward10' | 'back10'
   | 'statePaused' | 'statePlaying' | 'stateMuted' | 'stateUnmuted' | 'stateEnded'
   | 'servers' | 'server' | 'trailer' | 'fullTitle' | 'shortcuts' | 'gestures'
+  | 'auto' | 'autoBestHint' | 'bestQuality' | 'chooseServer'
+  | 'serverSwitched' | 'serverFellBack' | 'tapToUnmute' | 'embedAudioHint'
   | 'live' | 'relatedTitles' | 'playerRegion';
 
 type Dict = Record<PlayerStringKey, string>;
@@ -64,6 +66,16 @@ const en: Dict = {
   statePaused: 'Paused', statePlaying: 'Playing', stateMuted: 'Muted', stateUnmuted: 'Sound on',
   stateEnded: 'Ended',
   servers: 'Servers', server: 'Server', trailer: 'Trailer', fullTitle: 'Full title',
+  auto: 'Auto',
+  autoBestHint: 'Pick the best available server automatically',
+  bestQuality: 'Best',
+  chooseServer: 'Choose server',
+  serverSwitched: 'Switched to {name} — the previous server did not respond',
+  serverFellBack:
+    'That server stopped responding, so playback moved to another one automatically. You can pick a different server above.',
+  tapToUnmute: 'Tap to unmute',
+  embedAudioHint:
+    'This server plays in its own player, so sound is controlled inside the video. If it starts silent, tap the speaker in the video.',
   shortcuts: 'Keyboard shortcuts', gestures: 'Touch gestures', live: 'Live',
   relatedTitles: 'More like this',
   playerRegion: 'Video player',
@@ -102,6 +114,16 @@ const hi: Partial<Dict> = {
   statePaused: 'रुका हुआ', statePlaying: 'चल रहा है', stateMuted: 'म्यूट', stateUnmuted: 'आवाज़ चालू',
   stateEnded: 'समाप्त',
   servers: 'सर्वर', server: 'सर्वर', trailer: 'ट्रेलर', fullTitle: 'पूरा टाइटल',
+  auto: 'ऑटो',
+  autoBestHint: 'सबसे अच्छा उपलब्ध सर्वर अपने आप चुनें',
+  bestQuality: 'सर्वश्रेष्ठ',
+  chooseServer: 'सर्वर चुनें',
+  serverSwitched: '{name} पर बदल दिया — पिछला सर्वर जवाब नहीं दे रहा था',
+  serverFellBack:
+    'वह सर्वर जवाब नहीं दे रहा था, इसलिए प्लेबैक अपने आप दूसरे सर्वर पर चला गया। आप ऊपर से कोई और सर्वर चुन सकते हैं।',
+  tapToUnmute: 'आवाज़ चालू करने के लिए टैप करें',
+  embedAudioHint:
+    'यह सर्वर अपने प्लेयर में चलता है, इसलिए आवाज़ वीडियो के अंदर से नियंत्रित होती है। आवाज़ न आए तो वीडियो में स्पीकर पर टैप करें।',
   shortcuts: 'कीबोर्ड शॉर्टकट', gestures: 'टच जेस्चर', live: 'लाइव', relatedTitles: 'इसी तरह के और',
   playerRegion: 'वीडियो प्लेयर',
   offline: 'आप ऑफ़लाइन हैं। देखना जारी रखने के लिए फिर से कनेक्ट करें।',
@@ -139,6 +161,16 @@ const ja: Partial<Dict> = {
   statePaused: '一時停止', statePlaying: '再生中', stateMuted: 'ミュート', stateUnmuted: '音声オン',
   stateEnded: '終了',
   servers: 'サーバー', server: 'サーバー', trailer: '予告編', fullTitle: '本編',
+  auto: '自動',
+  autoBestHint: '利用できる最良のサーバーを自動で選択します',
+  bestQuality: '最適',
+  chooseServer: 'サーバーを選択',
+  serverSwitched: '{name} に切り替えました — 前のサーバーが応答しませんでした',
+  serverFellBack:
+    'サーバーが応答しなくなったため、自動的に別のサーバーで再生を続けました。上から別のサーバーを選べます。',
+  tapToUnmute: 'タップで音声をオンに',
+  embedAudioHint:
+    'このサーバーは独自のプレーヤーで再生するため、音量は動画内で操作します。無音で始まる場合は動画内のスピーカーをタップしてください。',
   shortcuts: 'キーボードショートカット', gestures: 'タッチ操作', live: 'ライブ', relatedTitles: '関連作品',
   playerRegion: '動画プレーヤー',
   offline: 'オフラインです。接続を確認して再開してください。',
@@ -176,6 +208,16 @@ const fr: Partial<Dict> = {
   statePaused: 'En pause', statePlaying: 'Lecture', stateMuted: 'Son coupé', stateUnmuted: 'Son activé',
   stateEnded: 'Terminé',
   servers: 'Serveurs', server: 'Serveur', trailer: 'Bande-annonce', fullTitle: 'Titre complet',
+  auto: 'Auto',
+  autoBestHint: 'Choisir automatiquement le meilleur serveur disponible',
+  bestQuality: 'Meilleur',
+  chooseServer: 'Choisir un serveur',
+  serverSwitched: 'Passage à {name} — le serveur précédent ne répondait plus',
+  serverFellBack:
+    'Ce serveur ne répondait plus, la lecture est passée automatiquement à un autre. Vous pouvez en choisir un autre ci-dessus.',
+  tapToUnmute: 'Appuyez pour activer le son',
+  embedAudioHint:
+    'Ce serveur utilise son propre lecteur : le son se règle dans la vidéo. Si elle démarre en silence, appuyez sur le haut-parleur dans la vidéo.',
   shortcuts: 'Raccourcis clavier', gestures: 'Gestes tactiles', live: 'Direct', relatedTitles: 'Dans le même genre',
   playerRegion: 'Lecteur vidéo',
   offline: 'Vous êtes hors ligne. Reconnectez-vous pour continuer.',
@@ -213,6 +255,16 @@ const es: Partial<Dict> = {
   statePaused: 'En pausa', statePlaying: 'Reproduciendo', stateMuted: 'Silenciado', stateUnmuted: 'Sonido activado',
   stateEnded: 'Finalizado',
   servers: 'Servidores', server: 'Servidor', trailer: 'Tráiler', fullTitle: 'Título completo',
+  auto: 'Auto',
+  autoBestHint: 'Elegir automáticamente el mejor servidor disponible',
+  bestQuality: 'Mejor',
+  chooseServer: 'Elegir servidor',
+  serverSwitched: 'Cambiado a {name}: el servidor anterior no respondía',
+  serverFellBack:
+    'Ese servidor dejó de responder, así que la reproducción pasó automáticamente a otro. Puedes elegir uno distinto arriba.',
+  tapToUnmute: 'Toca para activar el sonido',
+  embedAudioHint:
+    'Este servidor usa su propio reproductor, así que el sonido se controla dentro del vídeo. Si empieza en silencio, toca el altavoz del vídeo.',
   shortcuts: 'Atajos de teclado', gestures: 'Gestos táctiles', live: 'En directo', relatedTitles: 'Más como esto',
   playerRegion: 'Reproductor de vídeo',
   offline: 'Estás sin conexión. Vuelve a conectarte para seguir viendo.',
@@ -250,6 +302,16 @@ const de: Partial<Dict> = {
   statePaused: 'Pausiert', statePlaying: 'Wiedergabe', stateMuted: 'Stumm', stateUnmuted: 'Ton ein',
   stateEnded: 'Beendet',
   servers: 'Server', server: 'Server', trailer: 'Trailer', fullTitle: 'Ganzer Titel',
+  auto: 'Auto',
+  autoBestHint: 'Automatisch den besten verfügbaren Server wählen',
+  bestQuality: 'Beste',
+  chooseServer: 'Server wählen',
+  serverSwitched: 'Zu {name} gewechselt – der vorherige Server antwortete nicht',
+  serverFellBack:
+    'Dieser Server antwortete nicht mehr, daher läuft die Wiedergabe automatisch über einen anderen. Oben kannst du einen anderen wählen.',
+  tapToUnmute: 'Tippen, um den Ton einzuschalten',
+  embedAudioHint:
+    'Dieser Server nutzt seinen eigenen Player – der Ton wird im Video geregelt. Startet es stumm, tippe im Video auf das Lautsprechersymbol.',
   shortcuts: 'Tastenkürzel', gestures: 'Touch-Gesten', live: 'Live', relatedTitles: 'Ähnliche Titel',
   playerRegion: 'Videoplayer',
   offline: 'Du bist offline. Verbinde dich erneut, um weiterzuschauen.',
@@ -287,6 +349,16 @@ const pt: Partial<Dict> = {
   statePaused: 'Em pausa', statePlaying: 'A reproduzir', stateMuted: 'Sem som', stateUnmuted: 'Com som',
   stateEnded: 'Terminado',
   servers: 'Servidores', server: 'Servidor', trailer: 'Trailer', fullTitle: 'Título completo',
+  auto: 'Auto',
+  autoBestHint: 'Escolher automaticamente o melhor servidor disponível',
+  bestQuality: 'Melhor',
+  chooseServer: 'Escolher servidor',
+  serverSwitched: 'Mudou para {name} — o servidor anterior não respondeu',
+  serverFellBack:
+    'Esse servidor deixou de responder, por isso a reprodução passou automaticamente para outro. Pode escolher outro acima.',
+  tapToUnmute: 'Toque para ativar o som',
+  embedAudioHint:
+    'Este servidor usa o seu próprio reprodutor, por isso o som controla-se dentro do vídeo. Se começar sem som, toque no altifalante do vídeo.',
   shortcuts: 'Atalhos de teclado', gestures: 'Gestos', live: 'Em direto', relatedTitles: 'Semelhantes',
   playerRegion: 'Reprodutor de vídeo',
   offline: 'Você está offline. Reconecte-se para continuar assistindo.',
@@ -324,6 +396,16 @@ const ko: Partial<Dict> = {
   statePaused: '일시정지됨', statePlaying: '재생 중', stateMuted: '음소거됨', stateUnmuted: '소리 켜짐',
   stateEnded: '종료',
   servers: '서버', server: '서버', trailer: '예고편', fullTitle: '본편',
+  auto: '자동',
+  autoBestHint: '사용 가능한 최적의 서버를 자동으로 선택',
+  bestQuality: '최적',
+  chooseServer: '서버 선택',
+  serverSwitched: '{name}(으)로 전환했습니다 — 이전 서버가 응답하지 않았습니다',
+  serverFellBack:
+    '해당 서버가 응답하지 않아 자동으로 다른 서버로 재생을 이어갔습니다. 위에서 다른 서버를 선택할 수 있습니다.',
+  tapToUnmute: '탭하여 소리 켜기',
+  embedAudioHint:
+    '이 서버는 자체 플레이어로 재생하므로 소리는 영상 안에서 조절합니다. 소리 없이 시작되면 영상의 스피커를 누르세요.',
   shortcuts: '키보드 단축키', gestures: '터치 제스처', live: '라이브', relatedTitles: '비슷한 콘텐츠',
   playerRegion: '동영상 플레이어',
   offline: '오프라인 상태입니다. 다시 연결한 후 계속 시청하세요.',
@@ -360,6 +442,14 @@ const zh: Partial<Dict> = {
   statePaused: '已暂停', statePlaying: '正在播放', stateMuted: '已静音', stateUnmuted: '已开启声音',
   stateEnded: '已结束',
   servers: '服务器', server: '服务器', trailer: '预告片', fullTitle: '正片',
+  auto: '自动',
+  autoBestHint: '自动选择可用的最佳服务器',
+  bestQuality: '最佳',
+  chooseServer: '选择服务器',
+  serverSwitched: '已切换到 {name} — 上一个服务器没有响应',
+  serverFellBack: '该服务器停止响应，已自动切换到其他服务器继续播放。你可以在上方另选一个。',
+  tapToUnmute: '点按以开启声音',
+  embedAudioHint: '该服务器使用自己的播放器，音量需在视频内控制。若开始时没有声音，请点按视频中的喇叭图标。',
   shortcuts: '键盘快捷键', gestures: '触摸手势', live: '直播', relatedTitles: '相似影片',
   playerRegion: '视频播放器',
   offline: '您已离线，请重新连接后继续观看。',

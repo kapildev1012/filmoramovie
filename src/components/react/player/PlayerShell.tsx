@@ -17,11 +17,23 @@
 // used inline in a page column and in fullscreen, and only its own width matters.
 //
 // POINTER SURFACES
-// • Engines we control (html5 / youtube): the whole surface is a tap target —
-//   tap toggles the controls, double-tap on a side skips ±10s.
-// • The third-party embed engine: only two narrow edge strips are interactive, so
-//   the provider's own play/pause and seek bar stay clickable. This is why the
-//   zones are not simply "left half / right half" for every engine.
+// • Engines we control (html5 / youtube): the surface is divided into three
+//   vertical thirds computed from the RENDERED stage width (percentages, not
+//   pixels, so they hold at 375px and at 1920px). Double-tap the left or right
+//   third to skip ∓10s with a ripple drawn where the finger landed; the centre
+//   third is play/pause. A single tap still does the ordinary thing — reveal the
+//   controls on touch, play/pause on a mouse — because the single-tap action is
+//   deferred by one double-tap window and cancelled when a second tap arrives.
+// • The third-party embed engine: no overlay at all, so the provider's own
+//   play/pause and seek bar stay clickable. This is why the zones are not simply
+//   "left half / right half" for every engine.
+//
+// ISOLATION (see `containPointer`)
+// The stage is an event boundary: pointer and click events raised by the player's
+// own chrome stop here instead of travelling on to page-level delegates (the
+// poster-card document click handler, rail drag handlers, modal backdrops).
+// Anything that genuinely has to talk to the page is marked
+// `data-fp-passthrough` and bubbles normally.
 
 import {
   useCallback,
@@ -69,6 +81,19 @@ import {
 
 type Layout = 'compact' | 'regular' | 'wide';
 
+/** The three pointer regions of the stage. */
+type Zone = 'left' | 'centre' | 'right';
+
+/**
+ * Window in which a second tap on the same zone counts as a double-tap, and
+ * therefore also how long a single tap's action is deferred. 300ms is what
+ * YouTube uses: long enough for a deliberate double-tap, short enough that a
+ * single click still feels immediate.
+ */
+const DOUBLE_TAP_MS = 300;
+/** Lifetime of the ±10s ripple. Must match the CSS animation duration. */
+const RIPPLE_MS = 520;
+
 export interface PlayerShellProps {
   api: PlayerApi;
   t: PlayerT;
@@ -101,6 +126,11 @@ export interface PlayerShellProps {
   endCard?: ReactNode;
   /** Extra note under the stage (e.g. the volume-relay explanation). */
   notice?: ReactNode;
+  /**
+   * Transient one-line status shown over the video (server fallback, quality
+   * change). Netflix-style silent recovery: it appears, it explains, it leaves.
+   */
+  toast?: string | null;
   /** Autoplay-next preference plumbing for the overflow sheet. */
   showAutoplayNext: boolean;
 }
@@ -133,6 +163,7 @@ export default function PlayerShell({
   upNext,
   endCard,
   notice,
+  toast,
   showAutoplayNext,
 }: PlayerShellProps) {
   const {
@@ -156,6 +187,7 @@ export default function PlayerShell({
     seekBy,
     setVolume,
     toggleMute,
+    unmuteFromAutoplay,
     setRate,
     selectAudio,
     selectText,
@@ -167,6 +199,7 @@ export default function PlayerShell({
     toggleFullscreen,
     requestPip,
     wake,
+    holdChrome,
     thumbnailAt,
     skipPulse,
     slowNetwork,
@@ -177,6 +210,41 @@ export default function PlayerShell({
   const speedBtn = useRef<HTMLButtonElement>(null);
   const overflowBtn = useRef<HTMLButtonElement>(null);
   const episodesBtn = useRef<HTMLButtonElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Keep the chrome open while the cursor is resting on it.
+   *
+   * Decided by GEOMETRY, not by :hover / pointerenter: the control bar is
+   * `pointer-events: none` while hidden, so a cursor parked where the bar is
+   * about to appear never raises an enter event — with a 1s idle timeout that
+   * meant the bar faded out from under a stationary cursor and only came back on
+   * the next mouse move. Testing the pointer against the interactive rows (seek
+   * bar + button row, not the transparent scrim) fixes it for any pointer that
+   * can hover, and touch is ignored because a finger does not rest anywhere.
+   */
+  const trackPointerHold = useCallback(
+    (event: { clientX: number; clientY: number; pointerType?: string }) => {
+      if (event.pointerType === 'touch') return;
+      const host = controlsRef.current;
+      if (!host) return;
+      const rows = host.querySelectorAll<HTMLElement>('.fp-seek, .fp-bar, .fp-menu');
+      let inside = false;
+      rows.forEach((row) => {
+        const r = row.getBoundingClientRect();
+        if (
+          event.clientX >= r.left &&
+          event.clientX <= r.right &&
+          event.clientY >= r.top &&
+          event.clientY <= r.bottom
+        ) {
+          inside = true;
+        }
+      });
+      holdChrome(inside);
+    },
+    [holdChrome]
+  );
 
   // ── Layout measurement ────────────────────────────────────────────────────
   const [layout, setLayout] = useState<Layout>('regular');
@@ -222,7 +290,97 @@ export default function PlayerShell({
     moved: boolean;
     pointerId: number;
   } | null>(null);
-  const lastTap = useRef<{ time: number; side: 'left' | 'right' } | null>(null);
+
+  // ── Double-tap / double-click seek (YouTube-style ±10s) ────────────────────
+  // One code path for touch and mouse: both raise pointerup, so `resolveTap`
+  // sees the same two events either way and desktop needs no separate dblclick
+  // handler (the native one is neutralised below so it cannot double-fire).
+  const lastTap = useRef<{ time: number; zone: Zone } | null>(null);
+  const tapTimer = useRef<number | undefined>(undefined);
+  const rippleTimer = useRef<number | undefined>(undefined);
+  const rippleSeq = useRef(0);
+  const [ripple, setRipple] = useState<{
+    id: number;
+    side: 'left' | 'right';
+    /** Percentages of the rendered stage box, so the burst lands under the
+     *  finger at every viewport size. */
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const showRipple = useCallback(
+    (side: 'left' | 'right', clientX: number, clientY: number) => {
+      const rect = stageRef.current?.getBoundingClientRect();
+      // Measured against the stage, never against the viewport or a constant:
+      // the same code puts the ripple in the right place on a 375px phone, in a
+      // page column, and in fullscreen.
+      const x = rect && rect.width ? ((clientX - rect.left) / rect.width) * 100 : side === 'left' ? 17 : 83;
+      const y = rect && rect.height ? ((clientY - rect.top) / rect.height) * 100 : 50;
+      rippleSeq.current += 1;
+      setRipple({
+        id: rippleSeq.current,
+        side,
+        x: Math.min(Math.max(x, 8), 92),
+        y: Math.min(Math.max(y, 12), 88),
+      });
+      window.clearTimeout(rippleTimer.current);
+      rippleTimer.current = window.setTimeout(() => setRipple(null), RIPPLE_MS);
+    },
+    [stageRef]
+  );
+
+  /**
+   * Decide what one tap on a zone means.
+   *
+   * DEBOUNCE: the single-tap action is not run immediately — it is scheduled one
+   * double-tap window out and cancelled if a second tap lands on the same zone.
+   * That is what stops a rapid double-tap from both toggling playback and
+   * seeking. The delay only applies to the side zones (where a double-tap has a
+   * meaning); the centre zone acts at once, so play/pause stays instant.
+   */
+  const resolveTap = useCallback(
+    (zone: Zone, event: React.PointerEvent<HTMLDivElement>) => {
+      const now = Date.now();
+      const previous = lastTap.current;
+      const canDouble = zone !== 'centre' && caps.seek;
+
+      if (canDouble && previous && previous.zone === zone && now - previous.time < DOUBLE_TAP_MS) {
+        lastTap.current = null;
+        window.clearTimeout(tapTimer.current);
+        seekBy(zone === 'left' ? -SKIP_SECONDS : SKIP_SECONDS, 'none');
+        showRipple(zone, event.clientX, event.clientY);
+        return;
+      }
+
+      if (!canDouble) {
+        // Nothing to wait for: act now.
+        if (zone === 'centre' && caps.playback) togglePlay();
+        else wake();
+        return;
+      }
+
+      lastTap.current = { time: now, zone };
+      const withMouse = event.pointerType === 'mouse';
+      window.clearTimeout(tapTimer.current);
+      tapTimer.current = window.setTimeout(() => {
+        lastTap.current = null;
+        // Mouse: a plain click on the picture is play/pause, as on every desktop
+        // player. Touch: a plain tap reveals the controls, because a finger on a
+        // phone is how you look at the seek bar, not how you pause.
+        if (withMouse && caps.playback) togglePlay();
+        else wake();
+      }, DOUBLE_TAP_MS);
+    },
+    [caps.seek, caps.playback, seekBy, showRipple, togglePlay, wake]
+  );
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(tapTimer.current);
+      window.clearTimeout(rippleTimer.current);
+    },
+    []
+  );
 
   const onZoneDown = useCallback(
     (kind: 'brightness' | 'volume') => (event: React.PointerEvent<HTMLDivElement>) => {
@@ -266,24 +424,15 @@ export default function PlayerShell({
   );
 
   const onZoneUp = useCallback(
-    (side: 'left' | 'right') => (event: React.PointerEvent<HTMLDivElement>) => {
+    (zone: Zone) => (event: React.PointerEvent<HTMLDivElement>) => {
       const session = drag.current;
       drag.current = null;
       event.currentTarget.releasePointerCapture?.(event.pointerId);
-      if (!session || session.moved) return;
-
-      // Double-tap a side to skip, single tap just reveals the controls.
-      const now = Date.now();
-      const previous = lastTap.current;
-      if (previous && previous.side === side && now - previous.time < 320 && caps.seek) {
-        lastTap.current = null;
-        seekBy(side === 'left' ? -SKIP_SECONDS : SKIP_SECONDS);
-        return;
-      }
-      lastTap.current = { time: now, side };
-      wake();
+      // A drag changed brightness/volume; it was never a tap.
+      if (session?.moved) return;
+      resolveTap(zone, event);
     },
-    [caps.seek, seekBy, wake]
+    [resolveTap]
   );
 
   // ── Derived UI state ──────────────────────────────────────────────────────
@@ -345,6 +494,30 @@ export default function PlayerShell({
   // once the video has ended — a play icon there would be a lie.
   const primaryLabel = ended ? t('replay') : isPlaying ? t('pause') : t('play');
 
+  /**
+   * ISOLATION BOUNDARY (both directions).
+   *
+   * Outward: pointer and click events raised inside the stage stop here instead
+   * of continuing to page-level delegates — the poster-card `document` click
+   * handler, rail drag handlers, modal backdrops, anything a future page adds. A
+   * volume drag or a double-tap seek must never also trigger a navbar item or a
+   * related-title card that happens to sit near the player.
+   *
+   * Inward: nothing outside can reach the player's state either. Keyboard
+   * shortcuts are bound to the stage element, not the window (see usePlayer), the
+   * embed adapter filters postMessage by frame identity, and fullscreen changes
+   * are matched against this stage specifically.
+   *
+   * The one deliberate exception is `data-fp-passthrough`: the end card's
+   * related-title links have to reach Astro's ClientRouter on `document` for a
+   * view transition, so their clicks bubble normally.
+   */
+  const containPointer = useCallback((event: React.SyntheticEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest?.('[data-fp-passthrough]')) return;
+    event.stopPropagation();
+  }, []);
+
   return (
     <div className="fp-root">
       <div
@@ -353,8 +526,23 @@ export default function PlayerShell({
         tabIndex={0}
         role="group"
         aria-label={`${title} — ${t('play')}`}
-        onMouseMove={wake}
-        onPointerDown={wake}
+        onMouseMove={(event) => {
+          trackPointerHold(event);
+          wake();
+        }}
+        // A cursor that leaves the stage (to another window, to the page below)
+        // must release the hold even though no further move arrives inside it.
+        onMouseLeave={() => {
+          holdChrome(false);
+          wake();
+        }}
+        onPointerDown={(event) => {
+          wake();
+          containPointer(event);
+        }}
+        onPointerUp={containPointer}
+        onClick={containPointer}
+        onDoubleClick={containPointer}
       >
         {/* Engine surface. The adapter appends <video> / <iframe> here. */}
         <div ref={hostRef} className="fp-surface" style={surfaceStyle} />
@@ -380,12 +568,19 @@ export default function PlayerShell({
           </button>
         )}
 
-        {/* Gesture zones only where WE own playback (html5 / youtube). On the
-            third-party embed engine we cannot drive the video anyway, so any
+        {/* Gesture / tap zones, only where WE own playback (html5 / youtube). On
+            the third-party embed engine we cannot drive the video anyway, so any
             overlay would just sit on top of the provider's OWN controls and
             block them — the exact "cannot control the server" problem. Render
             nothing there, so every provider control (play/pause, seek, quality,
-            audio track, fullscreen) inside the frame is fully reachable. */}
+            audio track, fullscreen) inside the frame is fully reachable.
+
+            The three zones are equal thirds of the stage width (CSS
+            percentages), so the double-tap targets stay proportional from a
+            375px phone to a 1920px desktop. `onDoubleClick` is neutralised
+            because the pointerup path already handles the second click — without
+            this the browser's own dblclick would fire a duplicate action and
+            select the page text behind the video. */}
         {started && prefs.gestures && !hasError && !ended && engine !== 'embed' && (
           <>
             <div
@@ -394,7 +589,14 @@ export default function PlayerShell({
               onPointerMove={onZoneMove}
               onPointerUp={onZoneUp('left')}
               onPointerCancel={onZoneUp('left')}
-              onDoubleClick={() => setBrightness(1)}
+              onDoubleClick={(event) => event.preventDefault()}
+              aria-hidden="true"
+            />
+            {/* Centre tap: only where we can actually toggle playback. */}
+            <div
+              className="fp-zone fp-zone-centre"
+              onPointerUp={onZoneUp('centre')}
+              onDoubleClick={(event) => event.preventDefault()}
               aria-hidden="true"
             />
             <div
@@ -403,18 +605,28 @@ export default function PlayerShell({
               onPointerMove={onZoneMove}
               onPointerUp={onZoneUp('right')}
               onPointerCancel={onZoneUp('right')}
-              onDoubleClick={toggleMute}
+              onDoubleClick={(event) => event.preventDefault()}
               aria-hidden="true"
             />
-            {/* Centre tap: only where we can actually toggle playback. */}
-            {caps.playback && (
-              <div
-                className="fp-zone fp-zone-centre"
-                onClick={togglePlay}
-                aria-hidden="true"
-              />
-            )}
           </>
+        )}
+
+        {/* Double-tap seek ripple, drawn at the point that was tapped. Separate
+            from `fp-skip-pulse` (which confirms the ±10s BUTTONS and the arrow
+            keys, and stays centred on its side) so neither ever doubles up. */}
+        {ripple && (
+          <span
+            key={ripple.id}
+            className={`fp-tap-ripple is-${ripple.side}`}
+            style={{ left: `${ripple.x}%`, top: `${ripple.y}%` }}
+            aria-hidden="true"
+          >
+            <span className="fp-tap-ripple-burst" />
+            <span className="fp-tap-ripple-label">
+              <SkipIcon size={22} direction={ripple.side === 'left' ? 'back' : 'forward'} />
+              <span>{ripple.side === 'left' ? '−' : '+'}{SKIP_SECONDS}s</span>
+            </span>
+          </span>
         )}
 
         {/* Skip feedback pulse (double-tap / ± keys). */}
@@ -446,6 +658,35 @@ export default function PlayerShell({
         {offline && !hasError && (
           <p className="fp-slow is-offline" role="status">
             {t('offline')}
+          </p>
+        )}
+
+        {/* Autoplay policy: the browser refused sound, so the engine started
+            muted and said so. Netflix/JioHotstar answer to this is one tap that
+            restores audio — never an error card, never silent playback with no
+            explanation. The button is a real button (Enter/Space work) and is
+            sized ≥44px for a thumb. */}
+        {started && snapshot.autoplayBlocked && !hasError && (
+          <button
+            type="button"
+            className="fp-unmute"
+            onClick={(event) => {
+              event.stopPropagation();
+              unmuteFromAutoplay();
+            }}
+          >
+            <span className="fp-unmute-icon" aria-hidden="true">
+              <VolumeIcon size={18} level={0} />
+            </span>
+            <span className="fp-unmute-text">{t('tapToUnmute')}</span>
+          </button>
+        )}
+
+        {/* Transient status (server fallback, etc.). Polite, self-dismissing,
+            and never on top of the control bar — see .fp-toast in player.css. */}
+        {toast && (
+          <p className="fp-toast" role="status" aria-live="polite">
+            {toast}
           </p>
         )}
 
@@ -500,7 +741,16 @@ export default function PlayerShell({
 
         {/* Top bar: back + title. Hidden with the controls. */}
         {started && (
-          <div className="fp-topbar">
+          <div
+            className="fp-topbar"
+            onPointerEnter={(event) => {
+              if (event.pointerType !== 'touch') holdChrome(true);
+            }}
+            onPointerLeave={(event) => {
+              if (event.pointerType !== 'touch') holdChrome(false);
+              wake();
+            }}
+          >
             {onBack && (
               <button
                 type="button"
@@ -541,11 +791,21 @@ export default function PlayerShell({
         {/* ── Control bar ── */}
         {started && !hasError && (
           <div
+            ref={controlsRef}
             className="fp-controls"
             // Pointer events here must not reach the tap-to-toggle zones.
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
             onMouseEnter={wake}
+            // Belt and braces alongside the geometric hold above: once the bar is
+            // visible it is interactive, so enter/leave are the cheapest signal.
+            onPointerEnter={(event) => {
+              if (event.pointerType !== 'touch') holdChrome(true);
+            }}
+            onPointerLeave={(event) => {
+              if (event.pointerType !== 'touch') holdChrome(false);
+              wake();
+            }}
           >
             {showSeekBar && (
               <SeekBar

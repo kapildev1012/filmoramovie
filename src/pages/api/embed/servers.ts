@@ -12,12 +12,15 @@
 // -> { servers: [{ id, name, label, verified, online, confidence }], count }
 import type { APIRoute } from 'astro';
 import { EMBED_SERVER_META, getAvailableServers, type EmbedTarget } from '../../../lib/embed';
+import { qualityFor, qualityLabel } from '../../../lib/player/serverRanking';
 
 export const prerender = false;
 
 const isDigits = (v: string | null): v is string => !!v && /^\d+$/.test(v);
 
-/** Unprobed server list, used when the probe pass itself blows up. */
+/** Unprobed server list, used when the probe pass itself blows up. Carries the
+ *  same shape as a probed entry (including the quality fields) so the client
+ *  ranking never has to special-case it. */
 const UNPROBED = EMBED_SERVER_META.map((m) => ({
   id: m.id,
   name: m.name,
@@ -25,6 +28,10 @@ const UNPROBED = EMBED_SERVER_META.map((m) => ({
   confidence: m.confidence,
   online: false,
   verified: false,
+  latencyMs: null,
+  maxHeight: qualityFor(m.id).maxHeight,
+  bitrateKbps: qualityFor(m.id).bitrateKbps,
+  qualityLabel: qualityLabel(m.id),
 }));
 
 export const GET: APIRoute = async ({ url }) => {

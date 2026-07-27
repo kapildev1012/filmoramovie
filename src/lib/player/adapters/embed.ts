@@ -36,39 +36,87 @@ import {
 const LOAD_TIMEOUT_MS = 9000;
 
 /**
- * Every postMessage dialect these embed players are known to listen for. We
- * cannot know which one a given provider implements (or whether it implements
- * any), so all of them go out; unknown shapes are ignored by the receiver.
+ * Every postMessage dialect these embed players are plausibly listening for.
+ *
+ * WHAT WE ACTUALLY KNOW (checked against the providers' own documentation):
+ * VidLink publishes a player API that is OUTBOUND ONLY — `MEDIA_DATA` and
+ * `PLAYER_EVENT` messages travel frame → parent, and there is no documented
+ * inbound command of any kind, volume included. VidFast, Videasy and NexStream
+ * (vidking) publish no inbound API either. So there is no supported way for this
+ * page to set the volume inside those players, and any claim to the contrary
+ * would be a lie about a cross-origin document we cannot touch.
+ *
+ * We still send the bursts below, because they cost nothing and cover the common
+ * player libraries these sites are built on (player.js, JW Player, Plyr /
+ * Vidstack, and the generic {type,value} shape). Whichever dialect the provider's
+ * bundle happens to understand wins; the rest are ignored by the receiver.
+ * `caps.volume = 'relay'` is the honest label for that: commands are sent, never
+ * confirmed, and the UI says so.
  */
 function volumeMessages(volume01: number, muted: boolean): unknown[] {
   const pct = Math.round(volume01 * 100);
   return [
+    // Generic shapes seen across these streaming front-ends.
     { type: 'volume', volume: volume01 },
+    { type: 'volume', value: volume01 },
     { type: 'setVolume', value: volume01 },
     { type: 'PLAYER_VOLUME', volume: volume01 },
+    { type: 'PLAYER_COMMAND', command: 'setVolume', value: volume01 },
     { type: 'MEDIA_COMMAND', command: 'volume', value: volume01 },
+    { action: 'setVolume', volume: volume01 },
+    // YouTube-style ({func, args}) — used by more embed wrappers than YouTube.
     { event: 'command', func: 'setVolume', args: [pct] },
+    // player.js (embedly) — the de-facto standard for embedded players.
     { context: 'player.js', version: '0.0.11', method: 'setVolume', value: pct },
+    // JW Player's iframe bridge (VidLink can be switched to JW with ?player=jw).
+    { name: 'setVolume', type: 'jwplayer', value: pct },
+    // Mute is a separate command in every one of those dialects.
     { type: muted ? 'mute' : 'unmute' },
     { type: 'setMuted', value: muted },
+    { type: 'PLAYER_COMMAND', command: 'setMuted', value: muted },
+    { action: muted ? 'mute' : 'unmute' },
+    { event: 'command', func: muted ? 'mute' : 'unMute', args: [] },
     { context: 'player.js', version: '0.0.11', method: muted ? 'mute' : 'unmute' },
+    { name: muted ? 'mute' : 'unmute', type: 'jwplayer' },
   ];
 }
 
-/** Pull {currentTime, duration} out of the many shapes providers emit. */
-function readProgress(payload: unknown): { currentTime?: number; duration?: number } | null {
+/**
+ * Parse a message from a provider frame.
+ *
+ * The one documented dialect among our providers is VidLink's, which is outbound
+ * only: `{ type: 'PLAYER_EVENT', data: { event: 'play' | 'pause' | 'seeked' |
+ * 'ended' | 'timeupdate', currentTime, duration, ... } }` plus a `MEDIA_DATA`
+ * message carrying watch progress. Others emit similarly-shaped objects, so we
+ * read defensively: any recognisable time/duration pair is used, and a
+ * recognisable playback state is mapped, while anything unknown is ignored.
+ */
+function readProviderMessage(payload: unknown): {
+  currentTime?: number;
+  duration?: number;
+  state?: 'playing' | 'paused' | 'ended';
+} | null {
   if (!payload || typeof payload !== 'object') return null;
   const record = payload as Record<string, unknown>;
   const nested =
     (record.data as Record<string, unknown> | undefined) ??
     (record.detail as Record<string, unknown> | undefined) ??
     record;
-  const time = Number(nested.currentTime ?? nested.time ?? nested.progress);
+
+  const out: { currentTime?: number; duration?: number; state?: 'playing' | 'paused' | 'ended' } = {};
+
+  const time = Number(nested.currentTime ?? nested.time ?? nested.progress ?? nested.watched);
   const duration = Number(nested.duration ?? nested.total);
-  const out: { currentTime?: number; duration?: number } = {};
   if (Number.isFinite(time) && time >= 0) out.currentTime = time;
   if (Number.isFinite(duration) && duration > 0) out.duration = duration;
-  return out.currentTime !== undefined || out.duration !== undefined ? out : null;
+
+  const event = String(nested.event ?? nested.eventName ?? record.event ?? '').toLowerCase();
+  if (event === 'pause' || event === 'paused') out.state = 'paused';
+  else if (event === 'ended' || event === 'complete') out.state = 'ended';
+  else if (event === 'play' || event === 'playing' || event === 'timeupdate' || event === 'seeked')
+    out.state = 'playing';
+
+  return out.currentTime !== undefined || out.duration !== undefined || out.state ? out : null;
 }
 
 export class EmbedAdapter implements PlayerAdapter {
@@ -144,12 +192,22 @@ export class EmbedAdapter implements PlayerAdapter {
         // volume now that there is something listening, so it is not left muted.
         this.pushVolume();
       }
-      const progress = readProgress(event.data);
-      if (progress) {
-        // The provider volunteers timing. Show a read-only progress bar; seeking
-        // is still impossible, so caps.seek stays false.
-        this.caps.time = true;
-        sink(progress);
+      const message = readProviderMessage(event.data);
+      if (message) {
+        if (message.currentTime !== undefined || message.duration !== undefined) {
+          // The provider volunteers timing. Show a read-only progress bar and
+          // feed Continue Watching; seeking is still impossible, so caps.seek
+          // stays false.
+          this.caps.time = true;
+        }
+        sink({
+          ...(message.currentTime !== undefined ? { currentTime: message.currentTime } : {}),
+          ...(message.duration !== undefined ? { duration: message.duration } : {}),
+          // A real state from the provider beats our "the frame loaded, assume
+          // playing" guess — this is what makes Up Next / the end card possible
+          // on a server that reports its own `ended`.
+          ...(message.state ? { status: message.state } : {}),
+        });
       }
     };
     window.addEventListener('message', this.onMessage);

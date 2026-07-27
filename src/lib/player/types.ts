@@ -120,6 +120,13 @@ export interface PlayerSnapshot {
   bandwidth: number | null;
   /** True once the engine has proven it is actually playing media. */
   live: boolean;
+  /**
+   * The browser refused to start playback with sound, so the engine muted itself
+   * to get the picture moving. Netflix/JioHotstar behaviour: play muted and show
+   * a one-tap unmute prompt, rather than surfacing an error or sitting silent.
+   * Cleared the moment the viewer unmutes.
+   */
+  autoplayBlocked: boolean;
 }
 
 export const EMPTY_SNAPSHOT: PlayerSnapshot = {
@@ -137,6 +144,7 @@ export const EMPTY_SNAPSHOT: PlayerSnapshot = {
   quality: null,
   bandwidth: null,
   live: false,
+  autoplayBlocked: false,
 };
 
 /**

@@ -46,8 +46,17 @@ import {
 import { resolveTrack } from '../../../lib/player/format';
 import type { PlayerT } from '../../../lib/player/strings';
 
-/** Idle delay before the control bar fades. Netflix uses ~3s; so do we. */
-const IDLE_MS = 3000;
+/**
+ * Idle delay before the control bar (volume, captions, full screen, everything)
+ * fades. 1s by product decision — much snappier than Netflix's ~3s, so the
+ * picture is clear almost immediately after the viewer stops moving.
+ *
+ * At this speed one extra rule is essential: resting the cursor ON the control
+ * bar must not make it disappear from under the pointer. `chromeHover` below
+ * holds it open for as long as the pointer is over the chrome, alongside the
+ * existing holds for paused / buffering / ended / offline / scrubbing / open menu.
+ */
+const IDLE_MS = 1000;
 /** Rapid play/pause taps inside this window collapse into one command. */
 const TOGGLE_DEBOUNCE_MS = 220;
 /** Seconds for the skip buttons and ←/→ keys. */
@@ -108,9 +117,19 @@ export interface PlayerApi {
   play: () => void;
   pause: () => void;
   seekTo: (seconds: number) => void;
-  seekBy: (delta: number) => void;
+  /**
+   * Seek relative to the playhead. `feedback: 'none'` suppresses the centred
+   * skip pulse, used by the double-tap zones which draw their own ripple at the
+   * point the viewer actually touched.
+   */
+  seekBy: (delta: number, feedback?: 'pulse' | 'none') => void;
   setVolume: (volume01: number) => void;
   toggleMute: () => void;
+  /**
+   * Answer the "tap to unmute" prompt: restore real audio, clear the blocked
+   * flag and (re)start playback with the fresh gesture the tap provides.
+   */
+  unmuteFromAutoplay: () => void;
   setRate: (rate: number) => void;
   cycleRate: (direction: 1 | -1) => void;
   selectAudio: (id: string) => void;
@@ -125,6 +144,12 @@ export interface PlayerApi {
   requestPip: () => void;
   /** Reveal the controls and restart the idle timer. */
   wake: () => void;
+  /**
+   * Hold the controls open while the pointer is over the chrome. Needed because
+   * the idle delay is 1s: without it, resting the cursor on a button could make
+   * that button fade away under the pointer.
+   */
+  holdChrome: (hovering: boolean) => void;
   /** Thumbnail for a scrub position, when the engine can produce one. */
   thumbnailAt: (seconds: number) => { url: string; x: number; y: number; w: number; h: number } | null;
   /** Feedback pulse for double-tap skip: 'forward' | 'back' | null. */
@@ -168,6 +193,8 @@ export function usePlayer({
   const [announcement, setAnnouncement] = useState('');
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const [skipPulse, setSkipPulse] = useState<'forward' | 'back' | null>(null);
+  /** Pointer is resting on the control bar / top bar — see IDLE_MS. */
+  const [chromeHover, setChromeHover] = useState(false);
   /**
    * Connection state. Initialised to `false` rather than `!navigator.onLine` so
    * the server-rendered markup and the first client render agree; the effect
@@ -256,9 +283,17 @@ export function usePlayer({
       if (cancelled) return;
       setCaps({ ...adapter.caps });
       // Apply remembered audio state immediately — before the first frame, so
-      // a muted-by-choice viewer never gets a burst of sound.
+      // a muted-by-choice viewer never gets a burst of sound. `prefs.volume`
+      // defaults to 1 (full) and is only lower when the viewer previously chose
+      // a lower level — see DEFAULT_PREFS / readPrefs.
       adapter.setVolume(prefs.volume, prefs.muted);
       if (adapter.caps.rate) adapter.setRate(prefs.rate);
+      // A source only exists because the viewer asked for one (pressed Play,
+      // picked an episode, switched server), so start it rather than making them
+      // press play twice. If the browser refuses audio, the adapter mutes,
+      // starts anyway and raises `autoplayBlocked` so the shell can offer sound
+      // in one tap — the Netflix/JioHotstar recovery, not an error.
+      if (adapter.caps.playback) void adapter.play();
     };
 
     void boot();
@@ -335,6 +370,7 @@ export function usePlayer({
   // states where a viewer is most likely reaching for a control.
   const holdOpen =
     menu !== null ||
+    chromeHover ||
     snapshot.status === 'paused' ||
     snapshot.status === 'ready' ||
     snapshot.status === 'idle' ||
@@ -347,6 +383,19 @@ export function usePlayer({
     setControlsVisible(true);
     window.clearTimeout(idleTimer.current);
     idleTimer.current = window.setTimeout(() => setControlsVisible(false), IDLE_MS);
+  }, []);
+
+  /**
+   * Called by the shell when the pointer enters/leaves the chrome. A touch tap
+   * does not "hover", so this only ever affects mouse and stylus users — exactly
+   * the ones who would otherwise watch a button vanish as they reach for it.
+   */
+  const holdChrome = useCallback((hovering: boolean) => {
+    setChromeHover(hovering);
+    if (hovering) {
+      window.clearTimeout(idleTimer.current);
+      setControlsVisible(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -401,11 +450,13 @@ export function usePlayer({
   }, []);
 
   const seekBy = useCallback(
-    (delta: number) => {
+    (delta: number, feedback: 'pulse' | 'none' = 'pulse') => {
       if (!caps.seek) return;
       const target = Math.max(0, snapshot.currentTime + delta);
       adapterRef.current?.seek(snapshot.duration ? Math.min(target, snapshot.duration) : target);
-      pulseSkip(delta > 0 ? 'forward' : 'back');
+      // The double-tap zones draw their ripple where the finger landed, so the
+      // centred pulse would be a second, wrongly-placed confirmation.
+      if (feedback === 'pulse') pulseSkip(delta > 0 ? 'forward' : 'back');
       announce(delta > 0 ? t('forward10') : t('back10'));
       wake();
     },
@@ -432,6 +483,25 @@ export function usePlayer({
     });
     wake();
   }, [announce, t, wake]);
+
+  /**
+   * The viewer answered the "tap to unmute" prompt.
+   *
+   * The engine muted ITSELF to satisfy the autoplay policy, without touching
+   * `prefs`, so `prefs.muted` is already false and a state update alone would not
+   * re-run the volume effect. The adapter is therefore commanded directly, and
+   * the tap doubles as the gesture that lets playback start with sound if it had
+   * been refused outright.
+   */
+  const unmuteFromAutoplay = useCallback(() => {
+    const volume = prefs.volume > 0 ? prefs.volume : 1;
+    adapterRef.current?.setVolume(volume, false);
+    setSnapshot((prev) => ({ ...prev, autoplayBlocked: false, muted: false }));
+    updatePrefs({ muted: false, volume });
+    void adapterRef.current?.play();
+    announce(t('stateUnmuted'));
+    wake();
+  }, [prefs.volume, updatePrefs, announce, t, wake]);
 
   const setRate = useCallback(
     (rate: number) => {
@@ -569,7 +639,15 @@ export function usePlayer({
 
   useEffect(() => {
     const sync = () => {
-      const active = !!document.fullscreenElement;
+      const element = document.fullscreenElement;
+      const stage = stageRef.current;
+      // ISOLATION: `document.fullscreenElement` is page-global. The detail pages
+      // carry other fullscreen-capable elements (the separate trailer <iframe>
+      // further down the page, an image viewer), and treating any of them as
+      // "the player is fullscreen" would resize our chrome for someone else's
+      // fullscreen. Only our own stage — or a descendant of it, which is how iOS
+      // reports a <video> in native fullscreen — counts.
+      const active = !!element && !!stage && (element === stage || stage.contains(element));
       setNativeFs(active);
       if (active) setPseudoFs(false);
     };
@@ -773,6 +851,7 @@ export function usePlayer({
     seekBy,
     setVolume,
     toggleMute,
+    unmuteFromAutoplay,
     setRate,
     cycleRate,
     selectAudio,
@@ -785,6 +864,7 @@ export function usePlayer({
     toggleFullscreen,
     requestPip,
     wake,
+    holdChrome,
     thumbnailAt,
     skipPulse,
     pulseSkip,

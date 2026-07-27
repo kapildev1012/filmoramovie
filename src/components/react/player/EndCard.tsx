@@ -72,7 +72,12 @@ export default function EndCard({ title, next, onReplay, related, t }: EndCardPr
           <ul className="fp-endcard-grid">
             {related.slice(0, 6).map((item) => (
               <li key={item.id}>
-                <a className="fp-endcard-card" href={item.href}>
+                {/* data-fp-passthrough: the ONE place player chrome deliberately
+                    talks to the page. The stage contains every other pointer
+                    event (see PlayerShell.containPointer); these links must reach
+                    Astro's document-level ClientRouter so navigating to another
+                    title is a view transition, not a full reload. */}
+                <a className="fp-endcard-card" href={item.href} data-fp-passthrough>
                   {item.posterUrl ? (
                     <img src={item.posterUrl} alt="" loading="lazy" />
                   ) : (

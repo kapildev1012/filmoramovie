@@ -487,11 +487,39 @@ export class Html5Adapter implements PlayerAdapter {
   }
 
   // ── Commands ──────────────────────────────────────────────────────────────
+  /**
+   * Start playback, handling the browser's autoplay policy the way the big
+   * services do.
+   *
+   * A `play()` rejected with NotAllowedError means "not with sound, not without a
+   * gesture". Chrome/Safari will however allow the SAME call muted, so instead of
+   * leaving a dead poster we mute, start, and flag `autoplayBlocked` so the shell
+   * can offer a one-tap unmute. Any other rejection is left alone: the play
+   * button is still on screen and pressing it carries a fresh gesture.
+   */
   play(): void | Promise<void> {
-    const promise = this.video?.play();
-    // Autoplay rejection is expected (no gesture yet / audio not allowed). Do
-    // not surface it as an error; the play button stays visible.
-    return promise?.catch(() => undefined);
+    const video = this.video;
+    if (!video) return;
+    return video.play().catch((error: unknown) => {
+      const blocked =
+        error instanceof DOMException
+          ? error.name === 'NotAllowedError'
+          : (error as { name?: string })?.name === 'NotAllowedError';
+      if (!blocked || video.muted) return;
+      video.muted = true;
+      return video
+        .play()
+        .then(() => {
+          // Only report the muted fallback once it has actually succeeded —
+          // otherwise the prompt would appear over a video that is not playing.
+          this.sink({ autoplayBlocked: true, muted: true });
+        })
+        .catch(() => {
+          // Even muted autoplay was refused (Low Power Mode, Data Saver). Undo
+          // the mute so the viewer's own Play press starts with real sound.
+          video.muted = false;
+        });
+    });
   }
 
   pause(): void {

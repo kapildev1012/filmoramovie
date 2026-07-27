@@ -1,0 +1,37 @@
+---
+// TEMPORARY verification harness for the Watch Now player. Deleted after the
+// breakpoint / gesture test run — do not ship.
+import Layout from '../layouts/Layout.astro';
+import WatchNow from '../components/WatchNow.astro';
+
+export const prerender = false;
+---
+
+<Layout title="Player test">
+  <main class="container">
+    <!-- A page-level click delegate, to prove the player's own pointer events do
+         not leak out to it (Feature 5). -->
+    <button id="outside-btn" type="button" data-count="0">Outside button</button>
+    <p id="outside-log">page-clicks:0</p>
+
+    <WatchNow
+      mediaType="movie"
+      id={550}
+      title="Test Clip"
+      backdropUrl={null}
+      posterUrl={null}
+      media={{ src: '/__fp-test-clip.mp4', type: 'progressive' }}
+      markers={[{ kind: 'intro', start: 5, end: 15 }]}
+      related={[]}
+    />
+  </main>
+</Layout>
+
+<script is:inline>
+  // Counts every click that reaches the document — the isolation assertion.
+  let count = 0;
+  document.addEventListener('click', () => {
+    count += 1;
+    document.getElementById('outside-log').textContent = 'page-clicks:' + count;
+  });
+</script>

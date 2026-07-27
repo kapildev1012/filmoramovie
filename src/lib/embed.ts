@@ -33,6 +33,7 @@
 // routes, which resolve the real provider URL on the server.
 
 import { EMBED_API_KEY as EMBED_API_KEY_ENV } from 'astro:env/server';
+import { qualityFor, qualityLabel } from './player/serverRanking';
 
 /** CodeSpecter API base URL (resolves a direct source URL for a TMDB id). */
 export const EMBED_BASE = 'https://api.codespecters.com';
@@ -164,7 +165,14 @@ const PROBE_TTL_MS = 10 * 60 * 1000;
  * weak signal that must not disable a button for ten minutes.
  */
 const PROBE_NEGATIVE_TTL_MS = 45 * 1000;
-const _probeCache = new Map<string, { expires: number; url: string | null }>();
+/**
+ * The probe result now carries how long the provider took to answer. That is a
+ * real, measured number (unlike resolution, which is unknowable from here — see
+ * src/lib/player/serverRanking.ts), and it is the last tie-break the player uses
+ * when choosing a server automatically: between two providers that both
+ * recognise a title and have never failed, the faster one wins.
+ */
+const _probeCache = new Map<string, { expires: number; url: string | null; latencyMs: number | null }>();
 const PROBE_CACHE_MAX = 800;
 
 function cacheKey(server: EmbedServerId, target: EmbedTarget): string {
@@ -173,7 +181,7 @@ function cacheKey(server: EmbedServerId, target: EmbedTarget): string {
     : `${server}:tv:${target.id}:${target.season}:${target.episode}`;
 }
 
-function cacheSet(key: string, url: string | null): void {
+function cacheSet(key: string, url: string | null, latencyMs: number | null): void {
   if (_probeCache.size >= PROBE_CACHE_MAX) {
     const oldest = _probeCache.keys().next().value;
     if (oldest !== undefined) _probeCache.delete(oldest);
@@ -181,6 +189,7 @@ function cacheSet(key: string, url: string | null): void {
   _probeCache.set(key, {
     expires: Date.now() + (url ? PROBE_TTL_MS : PROBE_NEGATIVE_TTL_MS),
     url,
+    latencyMs,
   });
 }
 
@@ -218,11 +227,28 @@ export async function probeServer(
   server: EmbedServerId,
   target: EmbedTarget
 ): Promise<string | null> {
+  return (await probeServerTimed(server, target)).url;
+}
+
+/**
+ * Same probe, but also reports how long it took.
+ *
+ * The duration is measured around the actual network call, so it reflects the
+ * provider's real responsiveness from our edge. Cached entries replay the
+ * latency they were measured with rather than reporting a fake ~0ms, otherwise
+ * the ranking would think a cached server is infinitely fast.
+ */
+export async function probeServerTimed(
+  server: EmbedServerId,
+  target: EmbedTarget
+): Promise<{ url: string | null; latencyMs: number | null }> {
   const key = cacheKey(server, target);
   const hit = _probeCache.get(key);
-  if (hit && hit.expires > Date.now()) return hit.url;
+  if (hit && hit.expires > Date.now()) return { url: hit.url, latencyMs: hit.latencyMs };
 
   let resolved: string | null = null;
+  const startedAt = Date.now();
+  let latencyMs: number | null = null;
 
   try {
     if (server === 'nexstream') {
@@ -231,6 +257,7 @@ export async function probeServer(
       // nothing. `meta` is null for ids it cannot resolve, so that is the only
       // usable signal.
       const res = await fetchWithTimeout(codespecterApiUrl(target));
+      latencyMs = Date.now() - startedAt;
       if (res.ok) {
         const data = (await res.json()) as CodespecterResponse;
         const url = data.success ? data.sources?.find((s) => s.url)?.url : undefined;
@@ -241,6 +268,7 @@ export async function probeServer(
       // 200 for ones it does.
       const url = providerUrl(server, target);
       const res = await fetchWithTimeout(url);
+      latencyMs = Date.now() - startedAt;
       if (res.ok) resolved = url;
     } else {
       // 'live' confidence: these players respond identically for real and bogus
@@ -248,14 +276,16 @@ export async function probeServer(
       // serving its player for this request.
       const url = providerUrl(server, target);
       const res = await fetchWithTimeout(url);
+      latencyMs = Date.now() - startedAt;
       if (res.ok) resolved = url;
     }
   } catch {
     resolved = null; // timeout / network / abort -> treat as unavailable
+    latencyMs = null; // no usable timing from a failed request
   }
 
-  cacheSet(key, resolved);
-  return resolved;
+  cacheSet(key, resolved, latencyMs);
+  return { url: resolved, latencyMs };
 }
 
 export interface AvailableServer {
@@ -271,6 +301,23 @@ export interface AvailableServer {
   /** The provider answered our probe for this exact title. */
   online: boolean;
   confidence: ProbeConfidence;
+  /**
+   * Probe round-trip in ms, or null when the probe failed (a failed request
+   * carries no usable timing). Measured, not estimated — the player uses it as
+   * the final tie-break when auto-selecting a server.
+   */
+  latencyMs: number | null;
+  /**
+   * Declared best resolution / bitrate for this provider. Both are null today:
+   * these values cannot be observed from outside the provider's cross-origin
+   * player, so they must come from a curated registry or an out-of-band manifest
+   * inspection service. See SERVER_QUALITY in src/lib/player/serverRanking.ts for
+   * exactly what has to be supplied.
+   */
+  maxHeight: number | null;
+  bitrateKbps: number | null;
+  /** Badge text ("1080p"), or null while quality data is unavailable. */
+  qualityLabel: string | null;
 }
 
 const CONFIDENCE_RANK: Record<ProbeConfidence, number> = { title: 0, live: 1 };
@@ -282,13 +329,18 @@ const CONFIDENCE_RANK: Record<ProbeConfidence, number> = { title: 0, live: 1 };
  * it runs from a datacenter IP that providers throttle, so a failed probe often
  * means "we could not check", not "this will not play". Omitting the button
  * would take away a server that works fine in the viewer's browser. Instead the
- * probe result rides along as `online` / `verified`, and the ones we confirmed
- * are sorted first and marked in the UI. Selecting any server always plays.
+ * probe result rides along as `online` / `verified` / `latencyMs`, and the
+ * player's own ranking (src/lib/player/serverRanking.ts) turns those signals
+ * into the automatic pick. Selecting any server always plays.
  */
 export async function getAvailableServers(target: EmbedTarget): Promise<AvailableServer[]> {
   const results = await Promise.all(
     EMBED_SERVER_META.map(async (meta) => {
-      const url = await probeServer(meta.id, target).catch(() => null);
+      const { url, latencyMs } = await probeServerTimed(meta.id, target).catch(() => ({
+        url: null,
+        latencyMs: null,
+      }));
+      const quality = qualityFor(meta.id);
       return {
         id: meta.id,
         name: meta.name,
@@ -296,11 +348,18 @@ export async function getAvailableServers(target: EmbedTarget): Promise<Availabl
         confidence: meta.confidence,
         online: url !== null,
         verified: url !== null && meta.confidence === 'title',
+        latencyMs,
+        maxHeight: quality.maxHeight,
+        bitrateKbps: quality.bitrateKbps,
+        qualityLabel: qualityLabel(meta.id),
       };
     })
   );
 
-  // Confirmed servers first, then by how strong their check can ever be.
+  // Confirmed servers first, then by how strong their check can ever be. This is
+  // only a sensible default order for rendering; the authoritative "which one do
+  // we play" decision is made by rankServers() in the island, which also folds in
+  // the reliability the browser has observed for itself.
   return results.sort(
     (a, b) =>
       Number(b.online) - Number(a.online) ||

@@ -141,6 +141,9 @@ export class YouTubeAdapter implements PlayerAdapter {
   private pendingVolume: { volume: number; muted: boolean } | null = null;
   private pendingRate: number | null = null;
   private wantedCaptionLang: string | null = null;
+  /** Last state YouTube reported; used to detect a refused autoplay. */
+  private started = false;
+  private autoplayProbe: number | undefined;
 
   async mount(host: HTMLElement, source: PlayerSource, sink: SnapshotSink): Promise<void> {
     if (source.engine !== 'youtube') return;
@@ -201,6 +204,8 @@ export class YouTubeAdapter implements PlayerAdapter {
           const S = YT.PlayerState;
           switch (event.data) {
             case S.PLAYING:
+              this.started = true;
+              window.clearTimeout(this.autoplayProbe);
               sink({ status: 'playing', live: true, error: null, duration: this.player?.getDuration() ?? 0 });
               this.loadCaptionList();
               break;
@@ -208,6 +213,8 @@ export class YouTubeAdapter implements PlayerAdapter {
               sink({ status: 'paused' });
               break;
             case S.BUFFERING:
+              this.started = true;
+              window.clearTimeout(this.autoplayProbe);
               sink({ status: 'buffering' });
               break;
             case S.ENDED:
@@ -315,8 +322,31 @@ export class YouTubeAdapter implements PlayerAdapter {
     tick();
   }
 
+  /**
+   * Start playback, with the same autoplay-policy fallback as the <video>
+   * engine.
+   *
+   * The IFrame API has no rejected promise to inspect: a refused autoplay simply
+   * leaves the player in UNSTARTED forever. So we ask, then check. If nothing has
+   * begun after the grace period we mute and ask again — the one thing every
+   * browser still allows — and flag `autoplayBlocked` so the shell can offer
+   * one-tap sound instead of showing a frozen poster.
+   */
   play(): void {
-    this.player?.playVideo();
+    const player = this.player;
+    if (!player) return;
+    player.playVideo();
+    window.clearTimeout(this.autoplayProbe);
+    this.autoplayProbe = window.setTimeout(() => {
+      if (this.destroyed || this.started || !this.player) return;
+      try {
+        this.player.mute();
+        this.player.playVideo();
+        this.sink({ autoplayBlocked: true, muted: true });
+      } catch {
+        /* player torn down mid-check */
+      }
+    }, 1200);
   }
 
   pause(): void {
@@ -373,6 +403,7 @@ export class YouTubeAdapter implements PlayerAdapter {
   destroy(): void {
     this.destroyed = true;
     window.clearTimeout(this.poll);
+    window.clearTimeout(this.autoplayProbe);
     try {
       this.player?.destroy();
     } catch {
