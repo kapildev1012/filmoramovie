@@ -251,8 +251,17 @@ const quality = rating !== null && rating >= 8 ? '4K' : 'HD';
   .poster-card-subtitle { display: block; font-size: var(--font-size-xs); color: var(--color-text-3); margin-top: 0.125rem; }
 
   /* Grid context */
-  :global(.poster-grid) .poster-card { width: 100%; flex-shrink: unset; }
-  :global(.poster-grid) .poster-card--wide { width: 100%; }
+  /* In a grid the card fills its cell. The min/max-width the horizontal rails
+     set (see mobile.css) must be cleared here, or on a phone a grid card gets
+     capped narrower than its track (leaving ragged gaps) or forced wider than
+     its 1fr track (overflowing the row) — either way the cards stop looking
+     uniform. `width:100%` + `min-width:0` + `max-width:none` makes every grid
+     card exactly one track wide. */
+  :global(.poster-grid) .poster-card { width: 100%; min-width: 0; max-width: none; flex-shrink: unset; }
+  :global(.poster-grid) .poster-card--wide { width: 100%; max-width: none; }
+  /* Reserve the subtitle line so cards with no release year are the same height
+     as cards that show one — the grid rows then align perfectly. */
+  :global(.poster-grid) .poster-card-info { min-height: 2.6rem; }
 
   /* Touch/mobile: no hover UI — hide the action overlay (play / heart / info)
      and disable the sticky-hover lift + zoom so cards stay static on tap. */

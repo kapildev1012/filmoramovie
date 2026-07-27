@@ -401,26 +401,19 @@ export default function WatchNow({
   //
   // AUDIO ON THE EMBED SERVERS. Volume is relayed into the frame (every dialect
   // those players are plausibly built on — see adapters/embed.ts), but none of
-  // the four providers publishes an INBOUND command API: VidLink documents
-  // MEDIA_DATA / PLAYER_EVENT going frame → parent only, and the others document
-  // nothing at all. So a server that starts its own player muted can only be
-  // unmuted from inside the frame, and pretending otherwise would be a lie about
-  // a cross-origin document. The viewer therefore gets told, once per session,
-  // where the sound control actually lives.
-  const audioHintShown = useRef(false);
+  // the four providers publishes an INBOUND command API, so a server that starts
+  // its own player muted can only be unmuted from inside the frame. We used to
+  // surface a one-per-session toast explaining this; it was removed as noise —
+  // the frame's own speaker control is discoverable enough on its own.
   useEffect(() => {
     if (engine === 'embed' && snapshot.live && server) {
       confirmLive(server);
       reportOutcome(server, true);
-      if (!audioHintShown.current && caps.volume === 'relay') {
-        audioHintShown.current = true;
-        showToast(t('embedAudioHint'));
-      }
     }
     // `reportOutcome` is intentionally excluded: it changes identity whenever the
     // server list changes, and re-running this on that would re-record a success.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine, snapshot.live, server, confirmLive, caps.volume, showToast, t]);
+  }, [engine, snapshot.live, server, confirmLive]);
 
   // Auto-failover: an embed frame that errors (or never loads — see the embed
   // adapter's load timeout) advances to the NEXT-BEST server by itself rather

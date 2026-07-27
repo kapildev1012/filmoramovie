@@ -180,6 +180,23 @@ const galleryImages: string[] = movies
     row-gap: 2rem;
   }
 
+  /* Phones: a fixed 3-up grid (2-up on the narrowest devices) keeps every card
+     the same width and the rows even — matching the search and watchlist grids.
+     Equal 1fr tracks + the poster's 2/3 aspect ratio mean identical card sizes. */
+  @media (max-width: 639px) {
+    .poster-grid {
+      grid-template-columns: repeat(3, 1fr);
+      column-gap: 0.75rem;
+      row-gap: 1.5rem;
+    }
+  }
+  @media (max-width: 380px) {
+    .poster-grid {
+      grid-template-columns: repeat(2, 1fr);
+      column-gap: 0.75rem;
+    }
+  }
+
   @media (min-width: 640px) {
     .poster-grid {
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
