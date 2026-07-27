@@ -380,12 +380,16 @@ export default function PlayerShell({
           </button>
         )}
 
-        {/* Gesture zones. Narrow strips on the embed engine so the provider's own
-            controls stay reachable; wider halves where we own playback. */}
-        {started && prefs.gestures && !hasError && !ended && (
+        {/* Gesture zones only where WE own playback (html5 / youtube). On the
+            third-party embed engine we cannot drive the video anyway, so any
+            overlay would just sit on top of the provider's OWN controls and
+            block them — the exact "cannot control the server" problem. Render
+            nothing there, so every provider control (play/pause, seek, quality,
+            audio track, fullscreen) inside the frame is fully reachable. */}
+        {started && prefs.gestures && !hasError && !ended && engine !== 'embed' && (
           <>
             <div
-              className={`fp-zone fp-zone-left${engine === 'embed' ? ' is-narrow' : ''}`}
+              className="fp-zone fp-zone-left"
               onPointerDown={onZoneDown('brightness')}
               onPointerMove={onZoneMove}
               onPointerUp={onZoneUp('left')}
@@ -394,7 +398,7 @@ export default function PlayerShell({
               aria-hidden="true"
             />
             <div
-              className={`fp-zone fp-zone-right${engine === 'embed' ? ' is-narrow' : ''}`}
+              className="fp-zone fp-zone-right"
               onPointerDown={onZoneDown('volume')}
               onPointerMove={onZoneMove}
               onPointerUp={onZoneUp('right')}

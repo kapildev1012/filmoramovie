@@ -180,7 +180,7 @@ export default function WatchNow({
   }, [numericId, mediaType, isSeries, effectiveSeasons]);
 
   // ── Streaming servers (embed engine only) ─────────────────────────────────
-  const { servers, server, setServer, status: serverStatus, nextServer, confirmLive } =
+  const { servers, server, setServer, status: serverStatus, confirmLive } =
     useEmbedServers({
       type: isSeries ? 'tv' : 'movie',
       id,
@@ -372,21 +372,29 @@ export default function WatchNow({
     if (engine === 'embed' && snapshot.live && server) confirmLive(server);
   }, [engine, snapshot.live, server, confirmLive]);
 
-  // Auto-failover: an embed frame that reports a network error moves to the next
-  // server by itself rather than leaving a dead rectangle.
-  const failedRef = useRef<string | null>(null);
+  // Auto-failover: an embed frame that errors (or never loads — see the embed
+  // adapter's load timeout) advances to the next server by itself rather than
+  // leaving a dead rectangle. We track every server already tried for the
+  // current title and move to the first UNtried one, preferring servers the
+  // backend probe found online. When every server has been tried the error card
+  // stays put (Reload / manual switch) instead of cycling dead frames forever.
+  const triedServers = useRef<Set<string>>(new Set());
   const [failedOver, setFailedOver] = useState(false);
   useEffect(() => {
     if (engine !== 'embed' || snapshot.status !== 'error' || !server) return;
-    if (failedRef.current === server) return;
-    failedRef.current = server;
-    const next = nextServer();
+    triedServers.current.add(server);
+    const next =
+      [...servers]
+        .sort((a, b) => Number(b.online) - Number(a.online))
+        .find((s) => !triedServers.current.has(s.id))?.id ?? null;
     if (next) {
       setFailedOver(true);
+      setServer(next);
+      setPreferredServer(next);
       setReloadKey((key) => key + 1);
       remember({ server: next });
     }
-  }, [engine, snapshot.status, server, nextServer, remember]);
+  }, [engine, snapshot.status, server, servers, setServer, remember]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const start = useCallback(() => {
@@ -399,6 +407,9 @@ export default function WatchNow({
 
   const reload = useCallback(() => {
     setEndedFlag(false);
+    // Manual retry: give the current server a genuine fresh attempt and re-enable
+    // the full failover walk.
+    triedServers.current = new Set();
     setReloadKey((key) => key + 1);
   }, []);
 
@@ -417,7 +428,9 @@ export default function WatchNow({
       setServer(next);
       setPreferredServer(next);
       setFailedOver(false);
-      failedRef.current = null;
+      // A deliberate pick is a fresh start: let auto-failover try every server
+      // again from here if this one also fails.
+      triedServers.current = new Set();
       setEndedFlag(false);
       setReloadKey((key) => key + 1);
       remember({ server: next });
@@ -432,6 +445,9 @@ export default function WatchNow({
       setResumeAt(null);
       setEndedFlag(false);
       setUpNextDismissed(false);
+      // New episode = new title context; a server that failed for the previous
+      // one may serve this one, so let failover reconsider all of them.
+      triedServers.current = new Set();
       setStarted(true);
       setMenu(null);
       setReloadKey((key) => key + 1);

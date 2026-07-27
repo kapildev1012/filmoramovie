@@ -115,7 +115,19 @@ export class Html5Adapter implements PlayerAdapter {
     video.playsInline = true;
     video.preload = 'metadata';
     video.tabIndex = -1; // the stage owns focus and keyboard handling
-    video.setAttribute('disablepictureinpicture', 'false');
+    // Custom chrome only. The element is created detached and without a
+    // `controls` attribute, so there is nothing to flash on first paint — but we
+    // still set the IDL property explicitly (default is already false) so no
+    // upstream default, cloned node or WebKit state can ever flip the browser's
+    // own control bar on. Safari re-injection on fullscreen is handled in
+    // attachElementListeners().
+    video.controls = false;
+    // NOTE: `disablepictureinpicture` is a *boolean* attribute — its mere
+    // presence disables PiP regardless of the string value, so the previous
+    // `setAttribute('disablepictureinpicture', 'false')` actually DISABLED PiP
+    // and left the shell's PiP button (rendered because caps.pip is true) doing
+    // nothing. Use the IDL property so PiP stays available.
+    video.disablePictureInPicture = false;
     if (media.poster) video.poster = media.poster;
     if (media.crossOrigin) video.crossOrigin = media.crossOrigin;
     host.appendChild(video);
@@ -313,6 +325,51 @@ export class Html5Adapter implements PlayerAdapter {
     on('error', () => this.sink({ status: 'error', error: mapMediaError(video) }));
     on('seeked', () => this.pushProgress());
     on('progress', () => this.pushProgress());
+
+    // ── Native track lists (Safari / iOS native HLS) ──────────────────────────
+    // The hls.js path already re-syncs on AUDIO_TRACKS_UPDATED /
+    // SUBTITLE_TRACKS_UPDATED. When Safari plays the .m3u8 natively there is no
+    // hls.js: the alternate audio renditions and in-manifest subtitle tracks are
+    // surfaced on `video.audioTracks` / `video.textTracks`, and WebKit populates
+    // them *asynchronously* — often a beat AFTER `loadedmetadata`, and they can
+    // change again mid-playback. `syncTracks()` previously ran only on
+    // loadedmetadata, so it captured just the tracks present in that first frame
+    // — typically the main audio alone. To the viewer that reads as "only the
+    // original language is available". Re-sync whenever a track is added,
+    // removed, or its enabled/selected state changes so every rendition appears
+    // (and the language switcher shows up) the moment WebKit knows about it —
+    // without touching currentTime, so playback never restarts.
+    const resync = () => this.syncTracks();
+    const nativeAudio = (video as HTMLVideoElement & { audioTracks?: NativeAudioTrackList })
+      .audioTracks;
+    if (nativeAudio?.addEventListener) {
+      for (const type of ['addtrack', 'removetrack', 'change'] as const) {
+        nativeAudio.addEventListener(type, resync);
+        this.trackListeners.push(() => nativeAudio.removeEventListener?.(type, resync));
+      }
+    }
+    const textList = video.textTracks;
+    for (const type of ['addtrack', 'removetrack', 'change'] as const) {
+      textList.addEventListener(type, resync);
+      this.trackListeners.push(() => textList.removeEventListener(type, resync));
+    }
+
+    // ── Keep native controls suppressed (defensive; fixes Safari) ─────────────
+    // WebKit re-enables its own control bar when a <video> enters *native*
+    // fullscreen or picture-in-picture presentation mode, even when the element
+    // was created without a `controls` attribute and we drew our own chrome.
+    // Re-assert on the WebKit-specific presentation event and on the standard
+    // fullscreenchange so the native bar can never flash over our controls.
+    const suppressNativeControls = () => {
+      video.controls = false;
+    };
+    on('webkitpresentationmodechanged', suppressNativeControls);
+    on('webkitbeginfullscreen', suppressNativeControls);
+    on('webkitendfullscreen', suppressNativeControls);
+    document.addEventListener('fullscreenchange', suppressNativeControls);
+    this.trackListeners.push(() =>
+      document.removeEventListener('fullscreenchange', suppressNativeControls)
+    );
   }
 
   /** Rebuild the audio/text track lists and re-arm cue listeners. */

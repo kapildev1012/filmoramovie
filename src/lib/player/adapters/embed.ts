@@ -30,8 +30,10 @@ import {
   type SnapshotSink,
 } from '../types';
 
-/** No `load` event by then ⇒ the provider is not going to render. */
-const LOAD_TIMEOUT_MS = 14000;
+/** No `load` event by then ⇒ the provider is not going to render. Kept short so
+ *  the automatic server failover (see WatchNow) moves on quickly instead of
+ *  leaving the viewer on a dead frame. */
+const LOAD_TIMEOUT_MS = 9000;
 
 /**
  * Every postMessage dialect these embed players are known to listen for. We
@@ -107,9 +109,14 @@ export class EmbedAdapter implements PlayerAdapter {
       // autoplays and we have no state to read. The pre-roll overlay is removed
       // so the viewer can reach the provider's own controls.
       sink({ status: 'playing', error: null });
-      // Re-assert audio: a fresh document starts at its own default and has no
-      // idea what the viewer picked. Providers build their <video> lazily, so
-      // the message is repeated.
+      // Never leave a title muted by default. A provider that autoplays often
+      // starts its <video> muted to satisfy the browser's autoplay policy, so we
+      // relay the viewer's real level (unmuted unless they chose otherwise) as
+      // soon as the document exists and again as its player initialises lazily.
+      // Repeated because there is no ack: whichever burst the provider's dialect
+      // understands wins.
+      this.pushVolume();
+      window.setTimeout(() => this.pushVolume(), 300);
       window.setTimeout(() => this.pushVolume(), 800);
       window.setTimeout(() => this.pushVolume(), 2500);
     });
@@ -133,6 +140,9 @@ export class EmbedAdapter implements PlayerAdapter {
       if (!this.frameResponded) {
         this.frameResponded = true;
         sink({ live: true, status: 'playing', error: null });
+        // The provider's own player just came alive — re-assert the viewer's
+        // volume now that there is something listening, so it is not left muted.
+        this.pushVolume();
       }
       const progress = readProgress(event.data);
       if (progress) {
