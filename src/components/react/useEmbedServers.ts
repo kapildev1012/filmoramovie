@@ -4,9 +4,13 @@
 // (/api/embed/servers) and exposes the list. Three rules make the server buttons
 // dependable in every circumstance:
 //
-//  1. The list is never empty. The backend returns all providers (probe results
-//     are flags, not a filter) and if the request itself fails we fall back to
-//     the static list below, so the viewer can always switch servers by hand.
+//  1. The list is never empty, and it is populated INSTANTLY. On every title /
+//     episode change the hook seeds the full provider list from the curated
+//     ranking synchronously, so the server picker is fully populated and "Auto"
+//     has already chosen the cleanest working server in well under a second —
+//     the datacenter probe then only refines badges and display order. If the
+//     probe request itself fails we simply keep that seeded list, so the viewer
+//     can always switch servers by hand.
 //  2. The automatic pick is REASONED, not positional. `rankServers` orders the
 //     list by declared quality, then by evidence (playback confirmed in this
 //     browser > provider recognises the title > provider answered), then by the
@@ -172,11 +176,19 @@ export function useEmbedServers({ type, id, season, episode, enabled = true, pre
     // A new title/episode is a clean slate for failover: a provider that could
     // not serve the previous episode may serve this one.
     tried.current = new Set();
+    // Seed the FULL server list and an auto pick SYNCHRONOUSLY, before the probe
+    // answers. The datacenter probe is only advice (providers throttle our IP),
+    // it can take seconds, and blocking on it would (a) leave a phone viewer
+    // staring at an empty server sheet and (b) delay the automatic pick well past
+    // a second. Seeding from the curated ranking means the list is visible and
+    // "Auto" has already chosen the cleanest working server in <1s; the probe
+    // then only enriches badges/latency and reshuffles the display order.
+    adopt(FALLBACK_SERVERS, 'checking');
     const ac = new AbortController();
     load(ac.signal);
     return () => ac.abort();
     // `key` collapses the id/season/episode tuple into one dependency.
-  }, [key, enabled, load]);
+  }, [key, enabled, load, adopt]);
 
   /** The ranked list, best first. Recomputed only when the inputs change. */
   const ranked = useMemo<RankedServer<AvailableServer>[]>(

@@ -155,7 +155,7 @@ interface CodespecterResponse {
 
 // ─── Availability probing ─────────────────────────────────────────────────────
 
-const PROBE_TIMEOUT_MS = 6000;
+const PROBE_TIMEOUT_MS = 4000;
 /** Positive answers are cached so switching servers is instant. */
 const PROBE_TTL_MS = 10 * 60 * 1000;
 /**
@@ -195,7 +195,11 @@ function cacheSet(key: string, url: string | null, latencyMs: number | null): vo
 
 async function fetchWithTimeout(url: string, attempt = 0): Promise<Response> {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ac.abort();
+  }, PROBE_TIMEOUT_MS);
   try {
     return await fetch(url, {
       signal: ac.signal,
@@ -208,9 +212,11 @@ async function fetchWithTimeout(url: string, attempt = 0): Promise<Response> {
       },
     });
   } catch (err) {
-    // One retry: these providers drop the occasional connection, and a single
-    // hiccup must not remove a working server from the list.
-    if (attempt === 0) return fetchWithTimeout(url, 1);
+    // One retry for a transient connection drop — but NOT when our own timeout
+    // fired. Retrying a timeout would double the worst-case wait, and with it
+    // the time "Auto" needs to confirm a server; the seeded pick already lets
+    // playback start, so a slow provider is better left unconfirmed than chased.
+    if (attempt === 0 && !timedOut) return fetchWithTimeout(url, 1);
     throw err;
   } finally {
     clearTimeout(timer);

@@ -66,6 +66,38 @@ export function qualityFor(id: string): ServerQuality {
   return SERVER_QUALITY[id] ?? { maxHeight: null, bitrateKbps: null };
 }
 
+// ─── Curated provider preference (ad-cleanliness + reliability) ────────────────
+// This is the one editorial signal in the file, and it is deliberately labelled
+// as such. It is NOT a measurement — it encodes two things the player can never
+// probe from a datacenter IP and must not invent per title:
+//   1. how ad-intrusive each provider's OWN cross-origin player is (pop-ups,
+//      redirect tabs, overlay banners), and
+//   2. how reliably that provider actually starts a stream in a real browser.
+// It is the default order "Auto" trusts before any first-party evidence (a
+// confirmed play or a recorded failure) exists — which is exactly what lets the
+// automatic pick land on a clean, working server in well under a second without
+// waiting for the (advisory, often-throttled) probe to answer.
+//
+// LOWER = preferred. Maintainer-curated and safe to re-tune as providers change:
+//   vidlink, vidfast — leanest players, sandbox-friendly, the fewest pop-ups.
+//   videasy          — reliable, a little heavier.
+//   nexstream        — plays, but the heaviest ad wrapper of the four.
+// Unknown ids fall to PREFERENCE_MAX so a provider we have not vetted never
+// outranks a vetted one just by being unlisted.
+export const PROVIDER_PREFERENCE: Readonly<Record<string, number>> = {
+  vidlink: 0,
+  vidfast: 1,
+  videasy: 2,
+  nexstream: 3,
+};
+
+const PREFERENCE_MAX = 99;
+
+/** Curated preference for a server id (lower = cleaner/more reliable). */
+export function preferenceRank(id: string): number {
+  return PROVIDER_PREFERENCE[id] ?? PREFERENCE_MAX;
+}
+
 /** Badge text for a server, or null when we genuinely do not know. */
 export function qualityLabel(id: string): string | null {
   const q = qualityFor(id);
@@ -233,11 +265,17 @@ export interface RankOptions {
  *   2. Declared quality, highest first (maxHeight, then bitrateKbps). Currently
  *      unknown for every provider, so this step is a no-op until the data model
  *      carries it — see SERVER_QUALITY.
- *   3. Evidence: playback confirmed in this browser > provider recognises the
- *      title > provider answered the probe.
- *   4. Lowest observed failure rate from real playback in this browser.
- *   5. Fastest measured probe latency.
- *   6. Registry order, so the result is stable and never reshuffles per render.
+ *   3. Confirmed live in THIS browser — the frame reported playback. The only
+ *      hard "it actually plays" signal we ever get, so it beats everything
+ *      editorial below.
+ *   4. Lowest observed failure rate from real playback in this browser — a
+ *      curated-clean provider that keeps failing here still gets demoted.
+ *   5. Curated ad-cleanliness / reliability preference (PROVIDER_PREFERENCE),
+ *      cleanest first. This decides the instant, probe-free automatic pick when
+ *      nothing else separates the servers (the common case on a fresh load).
+ *   6. Probe evidence: provider recognises the title > provider answered.
+ *   7. Fastest measured probe latency.
+ *   8. Registry order, so the result is stable and never reshuffles per render.
  */
 export function rankServers<T extends RankableServer>(
   servers: readonly T[],
@@ -258,11 +296,25 @@ export function rankServers<T extends RankableServer>(
     const bitrate = bitrateRank(b) - bitrateRank(a);
     if (bitrate !== 0) return bitrate;
 
-    const evidence = evidenceRank(b) - evidenceRank(a);
-    if (evidence !== 0) return evidence;
+    // Proof it is streaming right now, for this viewer, outranks everything
+    // below — a confirmed player is worth more than any reputation.
+    const live = (b.live ? 1 : 0) - (a.live ? 1 : 0);
+    if (live !== 0) return live;
 
+    // Reliability THIS browser has actually observed. A curated-clean provider
+    // that keeps failing to play here must drop below one that works, so real
+    // outcomes outrank the editorial preference below.
     const reliability = failureRate(health[a.id]) - failureRate(health[b.id]);
     if (Math.abs(reliability) > 0.001) return reliability;
+
+    // Curated: prefer the leanest, least ad-heavy provider. This is the signal
+    // that decides the instant, probe-free pick when nothing else separates the
+    // servers (the common case on a fresh load).
+    const preference = preferenceRank(a.id) - preferenceRank(b.id);
+    if (preference !== 0) return preference;
+
+    const evidence = evidenceRank(b) - evidenceRank(a);
+    if (evidence !== 0) return evidence;
 
     const aLatency = a.latencyMs ?? Number.POSITIVE_INFINITY;
     const bLatency = b.latencyMs ?? Number.POSITIVE_INFINITY;

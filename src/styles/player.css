@@ -251,7 +251,12 @@
   position: absolute;
   inset: 0;
   border-radius: 999px;
-  background: radial-gradient(circle, rgb(255 255 255 / 0.22) 0%, rgb(255 255 255 / 0) 70%);
+  /* A dark core under a white bloom: the label has to stay legible over bright
+     content (snow, credits, a white-walled scene), which a white-only ripple
+     cannot promise. */
+  background:
+    radial-gradient(circle, rgb(0 0 0 / 0.55) 0%, rgb(0 0 0 / 0.28) 55%, rgb(0 0 0 / 0) 72%),
+    radial-gradient(circle, rgb(255 255 255 / 0.22) 0%, rgb(255 255 255 / 0) 70%);
   animation: fp-ripple 520ms var(--fp-ease) forwards;
 }
 
@@ -261,10 +266,11 @@
   place-items: center;
   gap: 0.15rem;
   color: #fff;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 0.9);
   animation: fp-ripple-label 520ms var(--fp-ease) forwards;
 }
 
