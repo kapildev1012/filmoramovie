@@ -60,6 +60,136 @@ export function tmdbImage(
 const _memCache = new Map<string, { expires: number; data: unknown }>();
 const MEM_CACHE_MAX = 500;
 
+// Network resilience tuning. Cloudflare Workers (and the workerd-based dev
+// server) abort outbound subrequests with "Network connection lost." when too
+// many run at once — a detail page used to fire 5 in parallel, and a browse
+// page 9. Three defences are layered here:
+//
+//   1. A concurrency gate caps simultaneous outbound fetches per isolate, so
+//      the subrequest pool is never saturated in the first place.
+//   2. In-flight de-duplication collapses identical concurrent URLs into one
+//      network call (rails on the same page often request the same endpoint).
+//   3. Retries with backoff, plus a stale-cache fallback so an expired entry
+//      is served instead of showing the "Failed to load" screen.
+const MAX_RETRIES = 4;          // total attempts (1 initial + 3 retries)
+const RETRY_BASE_MS = 200;      // backoff base; grows 200 → 400 → 800ms
+const REQUEST_TIMEOUT_MS = 8000; // abort a single hung attempt so a retry can run
+const MAX_CONCURRENT = 6;       // outbound TMDB fetches in flight at any moment
+const STALE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // serve stale data up to 24h old
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// @ts-ignore temporary diagnostics
+globalThis.__TMDB_DEBUG__ = true;
+
+// ── Concurrency gate ─────────────────────────────────────────────────────────
+let _active = 0;
+const _waiters: Array<() => void> = [];
+
+async function acquireSlot(): Promise<void> {
+  if (_active < MAX_CONCURRENT) {
+    _active++;
+    return;
+  }
+  await new Promise<void>((resolve) => _waiters.push(resolve));
+  _active++;
+}
+
+function releaseSlot(): void {
+  _active = Math.max(0, _active - 1);
+  const next = _waiters.shift();
+  if (next) next();
+}
+
+// ── In-flight de-duplication ─────────────────────────────────────────────────
+const _inflight = new Map<string, Promise<unknown>>();
+
+/** True when an error/response is worth retrying (transient, not a real 4xx). */
+function isTransient(err: unknown): boolean {
+  if (err instanceof Error) {
+    const m = err.message.toLowerCase();
+    return (
+      m.includes('network connection lost') ||
+      m.includes('connection') ||
+      m.includes('network') ||
+      m.includes('timeout') ||
+      m.includes('aborted') ||
+      m.includes('abort') ||
+      m.includes('fetch failed') ||
+      m.includes('socket') ||
+      m.includes('reset') ||
+      m.includes('internal error') ||
+      err.name === 'AbortError' ||
+      err.name === 'TypeError'
+    );
+  }
+  return false;
+}
+
+/** Cache write with simple size-capped (FIFO) eviction. */
+function cacheSet(href: string, data: unknown, ttlSeconds: number): void {
+  if (_memCache.size >= MEM_CACHE_MAX) {
+    const oldestKey = _memCache.keys().next().value;
+    if (oldestKey !== undefined) _memCache.delete(oldestKey);
+  }
+  _memCache.set(href, { expires: Date.now() + ttlSeconds * 1000, data });
+}
+
+/** The actual network work for one URL — retried, timed out, concurrency-gated. */
+async function fetchWithRetry<T>(href: string, endpoint: string, ttlSeconds: number): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    // Per-attempt timeout so a stalled connection doesn't block the whole render.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
+
+    await acquireSlot();
+    try {
+      const res = await fetch(href, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: ac.signal,
+        // Cloudflare edge cache — cache the upstream TMDB JSON for `ttlSeconds`.
+        // @ts-ignore — `cf` is a Cloudflare Workers RequestInit extension.
+        cf: { cacheTtl: ttlSeconds, cacheEverything: true },
+      });
+
+      // 429 / 5xx are transient; 404, 401, … are permanent. Both throw here,
+      // the catch block decides whether a retry is worthwhile.
+      if (!res.ok) {
+        throw new Error(`TMDB API error ${res.status}: ${res.statusText} — ${endpoint}`);
+      }
+
+      const data = (await res.json()) as T;
+      cacheSet(href, data, ttlSeconds);
+      return data;
+    } catch (err) {
+      lastError = err;
+      if (globalThis.__TMDB_DEBUG__) {
+        console.error(`[tmdb-debug] attempt ${attempt + 1} failed for ${endpoint}:`,
+          err instanceof Error ? `${err.name}: ${err.message}\n${err.stack}` : err);
+      }
+      const status = err instanceof Error ? err.message.match(/error (\d{3})/)?.[1] : undefined;
+      const retryableStatus = status === '429' || (status ? Number(status) >= 500 : false);
+      // A 4xx (other than 429) is a real answer — never retry it.
+      const permanent = status !== undefined && !retryableStatus;
+      const shouldRetry = !permanent && (isTransient(err) || retryableStatus) && attempt < MAX_RETRIES - 1;
+
+      if (!shouldRetry) throw err;
+
+      // Exponential backoff with a little jitter to avoid thundering-herd retries.
+      await sleep(RETRY_BASE_MS * 2 ** attempt + Math.random() * 120);
+    } finally {
+      clearTimeout(timer);
+      releaseSlot();
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`TMDB request failed — ${endpoint}`);
+}
+
 async function tmdbFetch<T>(
   endpoint: string,
   params: Record<string, string | number | boolean | undefined> = {},
@@ -78,33 +208,32 @@ async function tmdbFetch<T>(
 
   const href = url.toString();
 
-  // 1. In-memory memoisation (keyed on the full URL incl. params).
+  // 1. Fresh in-memory hit (keyed on the full URL incl. params).
   const cached = _memCache.get(href);
   if (cached && cached.expires > Date.now()) {
     return cached.data as T;
   }
 
-  const res = await fetch(href, {
-    headers: { 'Content-Type': 'application/json' },
-    // 2. Cloudflare edge cache — cache the upstream TMDB JSON for `ttlSeconds`.
-    // @ts-ignore — `cf` is a Cloudflare Workers RequestInit extension.
-    cf: { cacheTtl: ttlSeconds, cacheEverything: true },
-  });
+  // 2. An identical request is already running — share its promise.
+  const pending = _inflight.get(href);
+  if (pending) return pending as Promise<T>;
 
-  if (!res.ok) {
-    throw new Error(`TMDB API error ${res.status}: ${res.statusText} — ${endpoint}`);
-  }
+  const task = fetchWithRetry<T>(href, endpoint, ttlSeconds)
+    .catch((err) => {
+      // 3. Last resort: serve stale-but-recent data rather than failing the page.
+      const stale = _memCache.get(href);
+      const isNotFound = err instanceof Error && / 404[:,]?/.test(err.message);
+      if (stale && !isNotFound && Date.now() - (stale.expires - ttlSeconds * 1000) < STALE_MAX_AGE_MS) {
+        return stale.data as T;
+      }
+      throw err;
+    })
+    .finally(() => {
+      _inflight.delete(href);
+    });
 
-  const data = (await res.json()) as T;
-
-  // Store in the in-memory cache with simple size-capped eviction.
-  if (_memCache.size >= MEM_CACHE_MAX) {
-    const oldestKey = _memCache.keys().next().value;
-    if (oldestKey !== undefined) _memCache.delete(oldestKey);
-  }
-  _memCache.set(href, { expires: Date.now() + ttlSeconds * 1000, data });
-
-  return data;
+  _inflight.set(href, task);
+  return task;
 }
 
 // ─── Trending ────────────────────────────────────────────────────────────────
@@ -284,6 +413,278 @@ export async function searchMulti(
   return tmdbFetch('/search/multi', { query, page }, 60);
 }
 
+// ─── Typo-tolerant suggestion ranking ─────────────────────────────────────────
+//
+// TMDB's search returns loosely-related items in raw popularity order, so a
+// misspelling like "avengrs" or a partial like "dark kni" can bury the obvious
+// match. We re-rank client-facing suggestions by blending:
+//   • fuzzy title similarity (Dice coefficient over character bigrams — robust
+//     to transposed/missing letters, i.e. typos), and
+//   • a normalised popularity signal (so the famous title wins ties).
+// This gives Google-style "did you mean" behaviour without any extra network
+// calls or third-party service.
+
+/** Character-bigram multiset for a normalised string. */
+function bigrams(input: string): Map<string, number> {
+  const s = input.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const map = new Map<string, number>();
+  for (let i = 0; i < s.length - 1; i++) {
+    const bg = s.slice(i, i + 2);
+    map.set(bg, (map.get(bg) ?? 0) + 1);
+  }
+  return map;
+}
+
+/** Sørensen–Dice similarity between two strings (0 = none, 1 = identical). */
+function diceSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const A = bigrams(a);
+  const B = bigrams(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let overlap = 0;
+  for (const [bg, countA] of A) {
+    const countB = B.get(bg);
+    if (countB) overlap += Math.min(countA, countB);
+  }
+  return (2 * overlap) / (A.size + B.size);
+}
+
+/** Minimal shape needed to rank any TMDB search result (movie, series, person). */
+export interface SearchScorable {
+  title?: string;
+  name?: string;
+  original_title?: string;
+  original_name?: string;
+  popularity?: number;
+}
+
+/** Every title variant a result can be matched against (display + original). */
+function candidateTitles(item: SearchScorable): string[] {
+  return [item.title, item.name, item.original_title, item.original_name].filter(
+    (t): t is string => Boolean(t)
+  );
+}
+
+/**
+ * Best fuzzy similarity between the query and any of a result's title variants.
+ * Pure similarity with no popularity component — used for "did you mean"
+ * thresholds where a popular-but-unrelated title must not qualify.
+ */
+export function titleSimilarity(query: string, item: SearchScorable): number {
+  const q = query.trim().toLowerCase();
+  let best = 0;
+  for (const t of candidateTitles(item)) {
+    best = Math.max(best, diceSimilarity(q, t.toLowerCase()));
+  }
+  return best;
+}
+
+/** Relevance score for a single result against the raw query (higher = better). */
+function scoreResult(query: string, item: SearchScorable): number {
+  const q = query.trim().toLowerCase();
+  const titles = candidateTitles(item).map((t) => t.toLowerCase());
+  if (titles.length === 0) return 0;
+
+  // Score against every title variant and keep the best — matching the original
+  // language title ("Parasite" vs "Gisaengchung") should count just as much.
+  let relevance = 0;
+  for (const title of titles) {
+    let s = diceSimilarity(q, title);
+    // Strong boosts for direct matches so exact/prefix hits always float up.
+    if (title === q) s += 1;
+    else if (title.startsWith(q)) s += 0.45;
+    else if (title.includes(q)) s += 0.2;
+    // Any shared whole word (e.g. "batman" in "The Batman") helps partials.
+    else if (q.split(' ').some((w) => w.length > 2 && title.includes(w))) s += 0.12;
+    relevance = Math.max(relevance, s);
+  }
+
+  // Normalised popularity in ~0..1 (log-scaled: TMDB popularity is long-tailed).
+  const popularity = Math.min(1, Math.log10((item.popularity ?? 0) + 1) / 3);
+
+  // Relevance dominates; popularity only breaks ties between similar titles.
+  return relevance * 0.8 + popularity * 0.2;
+}
+
+/**
+ * Re-rank an already-fetched TMDB result list by fuzzy relevance to the query.
+ *
+ * TMDB returns matches in popularity order, which buries the obvious answer
+ * (searching "dark" put unrelated popular titles above "Dark"). Ties keep their
+ * original TMDB position, so this only ever reorders genuine near-matches.
+ *
+ * Items scoring below `minScore` are dropped — unless that would empty the
+ * list, in which case the original ordering is returned rather than showing
+ * the user nothing.
+ */
+export function rankByRelevance<T extends SearchScorable>(
+  query: string,
+  items: readonly T[],
+  minScore = 0.18
+): T[] {
+  const q = query.trim();
+  if (!q || items.length === 0) return [...items];
+
+  const scored = items
+    .map((item, index) => ({ item, index, score: scoreResult(q, item) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  const relevant = scored.filter((s) => s.score >= minScore);
+  return (relevant.length > 0 ? relevant : scored).map((s) => s.item);
+}
+
+/**
+ * Typo-tolerant, popularity-aware search suggestions for the autocomplete
+ * dropdown and search page. Falls back gracefully to an empty list.
+ */
+export async function searchSuggestions(
+  query: string,
+  limit = 8
+): Promise<TMDBTrendingItem[]> {
+  const q = query.trim();
+  // Suggest from as little as a single character so the typeahead starts
+  // recommending immediately as the user begins typing.
+  if (q.length < 1) return [];
+
+  const res = await searchMulti(q).catch(() => null);
+
+  // Drop people without a name; keep movies/series/known people.
+  const candidates = (res?.results ?? []).filter(
+    (item) => item.media_type !== 'person' || (item as any).name
+  );
+
+  // Nothing came back for the exact string (likely a typo) — retry with relaxed
+  // variants so the dropdown still offers the title the user meant.
+  if (candidates.length === 0) {
+    const variants = relaxedQueryVariants(q);
+    const fallbacks = await Promise.all(
+      variants.map((v) => searchMulti(v).catch(() => null))
+    );
+    const seen = new Set<number>();
+    for (const fb of fallbacks) {
+      for (const item of fb?.results ?? []) {
+        if (item.media_type === 'person' && !(item as any).name) continue;
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        candidates.push(item);
+      }
+    }
+  }
+
+  if (candidates.length === 0) return [];
+
+  // Keep only reasonably-relevant items so obvious mismatches don't show up,
+  // but never return an empty list when TMDB clearly found *something*.
+  const scored = candidates
+    .map((item) => ({ item, score: scoreResult(q, item) }))
+    .sort((a, b) => b.score - a.score);
+
+  const relevant = scored.filter((s) => s.score >= 0.18);
+  const chosen = (relevant.length > 0 ? relevant : scored).slice(0, limit);
+
+  return chosen.map((s) => s.item);
+}
+
+/** A suggested title to recover from a misspelled / zero-result query. */
+export interface DidYouMeanSuggestion {
+  id: number;
+  title: string;
+  mediaType: 'movie' | 'tv';
+  posterPath: string | null;
+  year: string;
+  href: string;
+  /** Fuzzy similarity to the original query (0..1) — useful for debugging/tests. */
+  score: number;
+}
+
+/**
+ * Build relaxed variants of a query so TMDB can still find something when the
+ * exact string matches nothing. A trailing/extra-letter typo ("avengerss",
+ * "interstellarr") is fixed by prefix truncation; a bad word in a multi-word
+ * query ("the dark knightt rises" → "dark") is fixed by using the longest word.
+ * Capped at 3 variants to keep this to a single extra round of subrequests.
+ */
+function relaxedQueryVariants(query: string): string[] {
+  const q = query.trim();
+  const variants: string[] = [];
+  const push = (v: string) => {
+    const t = v.trim();
+    if (t.length >= 3 && t !== q && !variants.includes(t)) variants.push(t);
+  };
+
+  if (q.length >= 5) push(q.slice(0, -1));
+  if (q.length >= 7) push(q.slice(0, -2));
+
+  const words = q.split(/\s+/).filter((w) => w.length > 3);
+  if (words.length > 1) {
+    push(words.reduce((a, b) => (b.length > a.length ? b : a)));
+  }
+
+  return variants.slice(0, 3);
+}
+
+/**
+ * "Did you mean …" recovery for queries TMDB can't match directly.
+ *
+ * Searches relaxed variants of the query, then keeps only titles that are
+ * genuinely close to what the user typed (fuzzy similarity, not popularity) so
+ * we never suggest a random blockbuster. Returns [] when nothing is close
+ * enough — the caller should then show its normal empty state.
+ */
+export async function getDidYouMeanSuggestions(
+  query: string,
+  limit = 6,
+  minSimilarity = 0.34
+): Promise<DidYouMeanSuggestion[]> {
+  const q = query.trim();
+  if (q.length < 3) return [];
+
+  const variants = relaxedQueryVariants(q);
+  if (variants.length === 0) return [];
+
+  const responses = await Promise.all(
+    variants.map((v) => searchMulti(v).catch(() => null))
+  );
+
+  const seen = new Set<string>();
+  const suggestions: DidYouMeanSuggestion[] = [];
+
+  for (const res of responses) {
+    for (const item of res?.results ?? []) {
+      if (item.media_type !== 'movie' && item.media_type !== 'tv') continue;
+
+      const movie = item as TMDBMovieBase;
+      const series = item as TMDBSeriesBase;
+      const isMovieItem = item.media_type === 'movie';
+      const title = isMovieItem ? movie.title : series.name;
+      if (!title) continue;
+
+      const key = `${item.media_type}:${item.id}`;
+      if (seen.has(key)) continue;
+
+      // Similarity is measured against the ORIGINAL query the user typed.
+      const score = titleSimilarity(q, item as SearchScorable);
+      if (score < minSimilarity) continue;
+
+      seen.add(key);
+      suggestions.push({
+        id: item.id,
+        title,
+        mediaType: isMovieItem ? 'movie' : 'tv',
+        posterPath: item.poster_path ?? null,
+        year: (isMovieItem ? movie.release_date : series.first_air_date)?.slice(0, 4) ?? '',
+        href: isMovieItem ? `/movie/${item.id}` : `/series/${item.id}`,
+        score,
+      });
+    }
+  }
+
+  return suggestions
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
 /** GET /search/movie */
 export async function searchMovies(
   query: string,
@@ -350,29 +751,105 @@ export function getWatchProvidersForCountry(
 }
 
 /**
- * Full detail fetch for a movie — merges details, credits, videos, and watch providers.
+ * Full detail fetch for a movie — details, credits, videos, watch providers and
+ * recommendations in a SINGLE TMDB request via `append_to_response`.
+ *
+ * This used to issue 4 parallel subrequests (5 with recommendations). On
+ * Cloudflare Workers that fan-out is what triggered "Network connection lost."
+ * and blanked the whole page, because one failed leg rejected the Promise.all.
+ * One request cannot partially fail.
  */
 export async function getMovieFull(id: number | string) {
-  const [movie, credits, videos, watchProviders] = await Promise.all([
-    getMovie(id),
-    getMovieCredits(id),
-    getMovieVideos(id),
-    getMovieWatchProviders(id),
-  ]);
-  return { movie, credits, videos, watchProviders };
+  type Appended = TMDBMovie & {
+    credits?: TMDBCredits;
+    videos?: TMDBVideosResponse;
+    'watch/providers'?: TMDBWatchProvidersResponse;
+    recommendations?: TMDBPaginatedResponse<TMDBMovieBase>;
+  };
+
+  const emptyCredits: TMDBCredits = { id: Number(id), cast: [], crew: [] };
+  const emptyVideos: TMDBVideosResponse = { id: Number(id), results: [] };
+  const emptyProviders: TMDBWatchProvidersResponse = { id: Number(id), results: {} };
+  const emptyRecs: TMDBPaginatedResponse<TMDBMovieBase> = {
+    page: 1, results: [], total_pages: 0, total_results: 0,
+  };
+
+  try {
+    const data = await tmdbFetch<Appended>(`/movie/${id}`, {
+      append_to_response: 'credits,videos,watch/providers,recommendations',
+    });
+
+    const { credits, videos, recommendations, 'watch/providers': watchProviders, ...movie } =
+      data as Appended;
+    return {
+      movie: movie as TMDBMovie,
+      credits: credits ?? emptyCredits,
+      videos: videos ?? emptyVideos,
+      watchProviders: watchProviders ?? emptyProviders,
+      recommendations: recommendations ?? emptyRecs,
+    };
+  } catch (err) {
+    // A 404 (or any permanent error) must propagate so the page can redirect.
+    if (err instanceof Error && /error 4\d\d/.test(err.message)) throw err;
+
+    // Transient failure on the combined call: fall back to the core details
+    // only. The extras are optional, so the page still renders.
+    const movie = await getMovie(id);
+    const [credits, videos, watchProviders, recommendations] = await Promise.all([
+      getMovieCredits(id).catch(() => emptyCredits),
+      getMovieVideos(id).catch(() => emptyVideos),
+      getMovieWatchProviders(id).catch(() => emptyProviders),
+      getMovieRecommendations(id).catch(() => emptyRecs),
+    ]);
+    return { movie, credits, videos, watchProviders, recommendations };
+  }
 }
 
 /**
- * Full detail fetch for a series — merges details, credits, videos, and watch providers.
+ * Full detail fetch for a series — details, credits, videos, watch providers
+ * and recommendations in a SINGLE TMDB request via `append_to_response`.
  */
 export async function getSeriesFull(id: number | string) {
-  const [series, credits, videos, watchProviders] = await Promise.all([
-    getSeries(id),
-    getSeriesCredits(id),
-    getSeriesVideos(id),
-    getSeriesWatchProviders(id),
-  ]);
-  return { series, credits, videos, watchProviders };
+  type Appended = TMDBSeries & {
+    credits?: TMDBCredits;
+    videos?: TMDBVideosResponse;
+    'watch/providers'?: TMDBWatchProvidersResponse;
+    recommendations?: TMDBPaginatedResponse<TMDBSeriesBase>;
+  };
+
+  const emptyCredits: TMDBCredits = { id: Number(id), cast: [], crew: [] };
+  const emptyVideos: TMDBVideosResponse = { id: Number(id), results: [] };
+  const emptyProviders: TMDBWatchProvidersResponse = { id: Number(id), results: {} };
+  const emptyRecs: TMDBPaginatedResponse<TMDBSeriesBase> = {
+    page: 1, results: [], total_pages: 0, total_results: 0,
+  };
+
+  try {
+    const data = await tmdbFetch<Appended>(`/tv/${id}`, {
+      append_to_response: 'credits,videos,watch/providers,recommendations',
+    });
+
+    const { credits, videos, recommendations, 'watch/providers': watchProviders, ...series } =
+      data as Appended;
+    return {
+      series: series as TMDBSeries,
+      credits: credits ?? emptyCredits,
+      videos: videos ?? emptyVideos,
+      watchProviders: watchProviders ?? emptyProviders,
+      recommendations: recommendations ?? emptyRecs,
+    };
+  } catch (err) {
+    if (err instanceof Error && /error 4\d\d/.test(err.message)) throw err;
+
+    const series = await getSeries(id);
+    const [credits, videos, watchProviders, recommendations] = await Promise.all([
+      getSeriesCredits(id).catch(() => emptyCredits),
+      getSeriesVideos(id).catch(() => emptyVideos),
+      getSeriesWatchProviders(id).catch(() => emptyProviders),
+      getSeriesRecommendations(id).catch(() => emptyRecs),
+    ]);
+    return { series, credits, videos, watchProviders, recommendations };
+  }
 }
 
 /**
@@ -451,17 +928,24 @@ export interface HeroSlide {
   href: string;
 }
 
-function formatRuntime(minutes: number | null | undefined): string | null {
-  if (!minutes || minutes <= 0) return null;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  return `${m}m`;
-}
+const MOVIE_GENRE_NAMES: Record<number, string> = {
+  28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
+  99: 'Documentary', 18: 'Drama', 10751: 'Family', 14: 'Fantasy', 36: 'History',
+  27: 'Horror', 10402: 'Music', 9648: 'Mystery', 10749: 'Romance',
+  878: 'Science Fiction', 10770: 'TV Movie', 53: 'Thriller', 10752: 'War', 37: 'Western',
+};
+
+const TV_GENRE_NAMES: Record<number, string> = {
+  10759: 'Action & Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
+  99: 'Documentary', 18: 'Drama', 10751: 'Family', 10762: 'Kids', 9648: 'Mystery',
+  10763: 'News', 10764: 'Reality', 10765: 'Sci-Fi & Fantasy', 10766: 'Soap',
+  10767: 'Talk', 10768: 'War & Politics', 37: 'Western',
+};
 
 /**
- * Build up to `limit` enriched hero slides for a media type. Fetches full
- * details for each item (in parallel) to obtain runtime + genre names.
+ * Build hero slides from data already present in TMDB list responses. The old
+ * implementation fetched full details for every slide, adding 5–10 requests
+ * and a complete second network waterfall to every catalog render.
  */
 export async function buildHeroSlides(
   items: Array<TMDBMovieBase | TMDBSeriesBase>,
@@ -470,63 +954,34 @@ export async function buildHeroSlides(
 ): Promise<HeroSlide[]> {
   const BACKDROP = `${TMDB_IMAGE_BASE}/w1280`;
   const POSTER = `${TMDB_IMAGE_BASE}/w500`;
-  const picked = items.filter((i) => i.backdrop_path).slice(0, limit);
+  const genreNames = mediaType === 'movie' ? MOVIE_GENRE_NAMES : TV_GENRE_NAMES;
 
-  const slides = await Promise.all(
-    picked.map(async (item) => {
-      try {
-        if (mediaType === 'movie') {
-          const m = await getMovie(item.id);
-          return {
-            id: m.id,
-            mediaType: 'movie' as const,
-            title: m.title,
-            overview: m.overview,
-            backdropUrl: m.backdrop_path ? `${BACKDROP}${m.backdrop_path}` : null,
-            posterUrl: m.poster_path ? `${POSTER}${m.poster_path}` : null,
-            releaseYear: m.release_date?.slice(0, 4) ?? '',
-            rating: Math.round(m.vote_average * 10) / 10,
-            genres: m.genres?.map((g) => g.name).slice(0, 3) ?? [],
-            runtime: formatRuntime(m.runtime),
-            href: `/movie/${m.id}`,
-          } satisfies HeroSlide;
-        }
-        const s = await getSeries(item.id);
-        return {
-          id: s.id,
-          mediaType: 'tv' as const,
-          title: s.name,
-          overview: s.overview,
-          backdropUrl: s.backdrop_path ? `${BACKDROP}${s.backdrop_path}` : null,
-          posterUrl: s.poster_path ? `${POSTER}${s.poster_path}` : null,
-          releaseYear: s.first_air_date?.slice(0, 4) ?? '',
-          rating: Math.round(s.vote_average * 10) / 10,
-          genres: s.genres?.map((g) => g.name).slice(0, 3) ?? [],
-          runtime:
-            formatRuntime(s.episode_run_time?.[0]) ??
-            (s.number_of_seasons
-              ? `${s.number_of_seasons} Season${s.number_of_seasons > 1 ? 's' : ''}`
-              : null),
-          href: `/series/${s.id}`,
-        } satisfies HeroSlide;
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  return slides.filter(Boolean) as HeroSlide[];
+  return items
+    .filter((item) => item.backdrop_path)
+    .slice(0, limit)
+    .map((item) => {
+      const isMovie = mediaType === 'movie';
+      const movie = item as TMDBMovieBase;
+      const series = item as TMDBSeriesBase;
+      return {
+        id: item.id,
+        mediaType,
+        title: isMovie ? movie.title : series.name,
+        overview: item.overview,
+        backdropUrl: item.backdrop_path ? `${BACKDROP}${item.backdrop_path}` : null,
+        posterUrl: item.poster_path ? `${POSTER}${item.poster_path}` : null,
+        releaseYear: (isMovie ? movie.release_date : series.first_air_date)?.slice(0, 4) ?? '',
+        rating: Math.round(item.vote_average * 10) / 10,
+        genres: (item.genre_ids ?? []).map((id) => genreNames[id]).filter(Boolean).slice(0, 3),
+        runtime: null,
+        href: isMovie ? `/movie/${item.id}` : `/series/${item.id}`,
+      } satisfies HeroSlide;
+    });
 }
 
-// Genre / network / company ids used on the home page.
-const GENRE = { action: 28, comedy: 35, horror: 27, scifi: 878, drama: 18, animation: 16 } as const;
-const NETWORK = { netflix: 213 } as const;
-const COMPANY = { marvel: 420, disney: 2 } as const;
-
 /**
- * Full home-page payload: enriched hero slides + every content rail.
- * All requests run in parallel. Individual failures degrade gracefully
- * (missing rails simply render nothing).
+ * Home-page payload. Only fetch data that is actually rendered; the previous
+ * version requested nine genre/company rails that were discarded by the page.
  */
 export async function getHomePageData() {
   const empty = { results: [] as never[], page: 1, total_pages: 0, total_results: 0 };
@@ -541,15 +996,6 @@ export async function getHomePageData() {
     onAir,
     upcoming,
     popularMovies,
-    action,
-    comedy,
-    horror,
-    scifi,
-    drama,
-    anime,
-    netflix,
-    disney,
-    marvel,
   ] = await Promise.all([
     safe(getTrending('week'), empty as any),
     safe(getTrendingMovies('week'), empty as any),
@@ -559,15 +1005,6 @@ export async function getHomePageData() {
     safe(getOnAirSeries(), empty as any),
     safe(getUpcomingMovies(), empty as any),
     safe(getPopularMovies(), empty as any),
-    safe(getMoviesByGenre(GENRE.action), empty as any),
-    safe(getMoviesByGenre(GENRE.comedy), empty as any),
-    safe(getMoviesByGenre(GENRE.horror), empty as any),
-    safe(getMoviesByGenre(GENRE.scifi), empty as any),
-    safe(getMoviesByGenre(GENRE.drama), empty as any),
-    safe(getSeriesByGenre(GENRE.animation, 1, 'ja'), empty as any),
-    safe(getSeriesByNetwork(NETWORK.netflix), empty as any),
-    safe(getMoviesByCompany(COMPANY.disney), empty as any),
-    safe(getMoviesByCompany(COMPANY.marvel), empty as any),
   ]);
 
   // Enrich hero carousels (top 5 each) — parallelised inside the builders.
@@ -594,15 +1031,6 @@ export async function getHomePageData() {
     onAir,
     upcoming,
     popularMovies,
-    action,
-    comedy,
-    horror,
-    scifi,
-    drama,
-    anime,
-    netflix,
-    disney,
-    marvel,
   };
 }
 
@@ -635,7 +1063,7 @@ export async function getAnimePageData(opts: {
 
   const [gridRes, genresRes, trendingRes, topAiringRes, popularRes, romanceRes, actionRes, scifiRes, upcomingRes] = await Promise.all([
     discoverSeries(gridParams),
-    getSeriesGenres(),
+    s(getSeriesGenres(), { genres: [] }),
     s(getTrendingSeries('week'), empty),
     s(getSeriesByGenre(ANIM, 1, 'ja'), empty),
     s(discoverSeries({ with_genres: String(ANIM), with_original_language: 'ja', sort_by: 'vote_count.desc', page: 1 }), empty),
@@ -744,17 +1172,15 @@ export async function getPlatformPageData(platform: 'netflix' | 'prime' | 'disne
 export async function getAllPlatformTop10() {
   const s = <T>(p: Promise<T>, fb: T): Promise<T> => p.catch(() => fb);
   const empty = { results: [] as any[] };
-  const [netflixTV, primeTV, disneyTV, hotstarTV, appletvTV] = await Promise.all([
+  const [netflixTV, primeTV, hotstarTV, appletvTV] = await Promise.all([
     s(getTop10ByProvider(PROVIDER.netflix, 'tv'),  empty),
     s(getTop10ByProvider(PROVIDER.prime,   'tv'),  empty),
-    s(getTop10ByProvider(PROVIDER.disney,  'tv'),  empty),
     s(getTop10ByProvider(PROVIDER.hotstar, 'tv'),  empty),
     s(getTop10ByProvider(PROVIDER.appletv, 'tv'),  empty),
   ]);
   return {
     netflixTop10: netflixTV.results  as TMDBSeriesBase[],
     primeTop10:   primeTV.results    as TMDBSeriesBase[],
-    disneyTop10:  disneyTV.results   as TMDBSeriesBase[],
     hotstarTop10: hotstarTV.results  as TMDBSeriesBase[],
     appletvTop10: appletvTV.results  as TMDBSeriesBase[],
   };

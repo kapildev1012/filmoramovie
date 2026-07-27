@@ -2,12 +2,12 @@
 // src/pages/movie/[id].astro — Movie detail page
 import Layout from '../../layouts/Layout.astro';
 import HeroCarousel from '../../components/react/HeroCarousel';
+import WatchNow from '../../components/WatchNow.astro';
 import MovieRail from '../../components/MovieRail.astro';
 import { CastGallery } from '../../components/ui/gallery';
-import InfiniteGallery from '../../components/ui/3d-gallery-photography';
-import { getMovieFull, getMovieRecommendations, getOfficialTrailerKey, getWatchProvidersForCountry } from '../../lib/tmdb';
+import { getMovieFull, getOfficialTrailerKey } from '../../lib/tmdb';
 import type { HeroSlide } from '../../lib/tmdb';
-import type { TMDBCastMember, TMDBProvider } from '../../lib/types';
+import type { TMDBCastMember } from '../../lib/types';
 
 const { id } = Astro.params;
 
@@ -20,6 +20,8 @@ let error: string | null = null;
 let notFound = false;
 
 try {
+  // One TMDB request (append_to_response) returns details + credits + videos +
+  // providers + recommendations, so there is no fan-out left to fail partially.
   data = await getMovieFull(id);
 } catch (e) {
   const msg = e instanceof Error ? e.message : '';
@@ -42,19 +44,20 @@ if (!data) {
 const movie          = data?.movie;
 const credits        = data?.credits;
 const videos         = data?.videos;
-const watchProviders = data?.watchProviders;
 
 const trailerKey = videos ? getOfficialTrailerKey(videos) : null;
-const providers  = watchProviders ? getWatchProvidersForCountry(watchProviders) : null;
 
-// Recommendations ("More Like This") — non-fatal if it fails.
-let recommendations: Awaited<ReturnType<typeof getMovieRecommendations>>['results'] = [];
-if (movie) {
-  try {
-    const rec = await getMovieRecommendations(movie.id);
-    recommendations = rec.results.slice(0, 20);
-  } catch {}
-}
+// Recommendations ("More Like This") arrive with the detail bundle.
+const recommendations = data?.recommendations?.results.slice(0, 20) ?? [];
+
+// The first few double as the player's end-card tiles ("More like this" after
+// the credits), so the viewer always has somewhere to go next.
+const relatedForPlayer = recommendations.slice(0, 6).map((item) => ({
+  id: item.id,
+  title: item.title ?? '',
+  posterUrl: item.poster_path ? `https://image.tmdb.org/t/p/w185${item.poster_path}` : null,
+  href: `/movie/${item.id}`,
+}));
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p';
 const backdropUrl = movie?.backdrop_path ? `${TMDB_IMG}/w1280${movie.backdrop_path}` : null;
@@ -65,30 +68,11 @@ const castPhotos = cast
   .filter((c) => c.profile_path)
   .slice(0, 5)
   .map((c) => ({ src: `https://image.tmdb.org/t/p/w185${c.profile_path}`, alt: c.name, name: c.name }));
-// Larger, higher-res set for the desktop/tablet 3D gallery
-const castGalleryImages = cast
-  .filter((c) => c.profile_path)
-  .slice(0, 12)
-  .map((c) => ({ src: `https://image.tmdb.org/t/p/w342${c.profile_path}`, alt: c.name }));
 const runtime = movie?.runtime
   ? `${Math.floor(movie.runtime / 60)}h ${movie.runtime % 60}m`
   : null;
 const releaseYear = movie?.release_date?.slice(0, 4);
 const rating = movie?.vote_average ? Math.round(movie.vote_average * 10) / 10 : null;
-
-// Combine all watch types for display
-const allProviders = [
-  ...(providers?.flatrate ?? []),
-  ...(providers?.rent ?? []),
-  ...(providers?.buy ?? []),
-  ...(providers?.free ?? []),
-  ...(providers?.ads ?? []),
-];
-// Deduplicate by provider_id
-const uniqueProviders = allProviders.reduce<TMDBProvider[]>((acc, p) => {
-  if (!acc.find((x) => x.provider_id === p.provider_id)) acc.push(p);
-  return acc;
-}, []);
 
 // Build a single cinematic hero slide so the detail page opens with the
 // exact same HeroCarousel used on the /movies browse page.
@@ -104,17 +88,39 @@ const heroSlide: HeroSlide | null = movie
       rating: rating ?? 0,
       genres: (movie.genres ?? []).map((g) => g.name).slice(0, 3),
       runtime,
-      href: trailerKey ? '#trailer' : '#watch-heading',
+      href: trailerKey ? '#trailer' : '#watch',
     }
   : null;
+
+// Landscape backdrops (this title + recommendations) for the shared gallery.
+const galleryImages: string[] = [
+  ...(movie?.backdrop_path ? [movie.backdrop_path] : []),
+  ...recommendations.map((r) => r.backdrop_path),
+]
+  .filter(Boolean)
+  .slice(0, 12)
+  .map((p) => `${TMDB_IMG}/w780${p}`);
 ---
 
 <Layout
   title={movie ? `${movie.title}${releaseYear ? ` (${releaseYear})` : ''}` : 'Movie'}
   description={movie?.overview || movie?.tagline || 'Movie details'}
   image={backdropUrl ?? posterUrl}
+  galleryImages={galleryImages}
 >
-  {error ? (
+  <Fragment slot="head">
+    {/* Resource hints for the streaming providers the player can actually pick
+         (see lib/embed.ts). Kept identical on the series page so the first frame
+         arrives just as fast for a show as for a film. vidsrc.to / 2embed.cc are
+         retired and were removed — a hint to a host we never contact only costs
+         a DNS lookup. */}
+    <link rel="dns-prefetch" href="https://www.vidking.net" />
+    <link rel="dns-prefetch" href="https://vidlink.pro" />
+    <link rel="dns-prefetch" href="https://player.videasy.net" />
+    <link rel="dns-prefetch" href="https://vidfast.pro" />
+    <link rel="dns-prefetch" href="https://api.codespecters.com" />
+  </Fragment>
+  {error || !movie ? (
     <div class="detail-error container">
       <div class="detail-error-inner">
         <h1>Failed to load</h1>
@@ -130,78 +136,20 @@ const heroSlide: HeroSlide | null = movie
       )}
 
       <div class="detail-body container">
-        {/* ── Where to Watch ── */}
-        <section class="detail-section" data-reveal aria-labelledby="watch-heading">
-          <h2 class="detail-section-title" id="watch-heading">Where to Watch</h2>
-          {uniqueProviders.length > 0 ? (
-            <div class="providers-grid">
-              {providers?.flatrate && providers.flatrate.length > 0 && (
-                <div class="provider-group">
-                  <h3 class="provider-group-title">Stream</h3>
-                  <div class="provider-logos">
-                    {providers.flatrate.map((p) => (
-                      <a
-                        href={providers!.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="provider-logo-link"
-                        aria-label={`Watch on ${p.provider_name}`}
-                        title={p.provider_name}
-                       
-                      >
-                        <img
-                          src={`https://image.tmdb.org/t/p/w92${p.logo_path}`}
-                          alt={p.provider_name}
-                          class="provider-logo"
-                          width="44"
-                          height="44"
-                          loading="lazy"
-                        />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {providers?.rent && providers.rent.length > 0 && (
-                <div class="provider-group">
-                  <h3 class="provider-group-title">Rent</h3>
-                  <div class="provider-logos">
-                    {providers.rent.map((p) => (
-                      <a href={providers!.link} target="_blank" rel="noopener noreferrer" class="provider-logo-link" aria-label={`Rent on ${p.provider_name}`} title={p.provider_name}>
-                        <img src={`https://image.tmdb.org/t/p/w92${p.logo_path}`} alt={p.provider_name} class="provider-logo" width="44" height="44" loading="lazy" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {providers?.buy && providers.buy.length > 0 && (
-                <div class="provider-group">
-                  <h3 class="provider-group-title">Buy</h3>
-                  <div class="provider-logos">
-                    {providers.buy.map((p) => (
-                      <a href={providers!.link} target="_blank" rel="noopener noreferrer" class="provider-logo-link" aria-label={`Buy on ${p.provider_name}`} title={p.provider_name}>
-                        <img src={`https://image.tmdb.org/t/p/w92${p.logo_path}`} alt={p.provider_name} class="provider-logo" width="44" height="44" loading="lazy" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div class="providers-empty">
-              <p>No streaming providers found for your region (IN). Check the title on
-                <a href={`https://www.themoviedb.org/movie/${movie.id}/watch`} target="_blank" rel="noopener noreferrer" class="providers-tmdb-link">TMDB</a>.
-              </p>
-            </div>
-          )}
-          <p class="providers-attribution">Watch provider data by
-            <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a> via TMDB.
-          </p>
-        </section>
+        {/* ── Watch (shared player section) ── */}
+        <WatchNow
+          mediaType="movie"
+          id={movie.id}
+          title={movie.title}
+          backdropUrl={backdropUrl ?? posterUrl}
+          posterUrl={posterUrl}
+          trailerKey={trailerKey}
+          related={relatedForPlayer}
+        />
 
         {/* ── Trailer ── */}
         {trailerKey && (
-          <section class="detail-section" id="trailer" data-reveal aria-labelledby="trailer-heading">
+          <section class="detail-section detail-hide-mobile" id="trailer" data-reveal aria-labelledby="trailer-heading">
             <h2 class="detail-section-title" id="trailer-heading">Trailer</h2>
             <div class="trailer-wrap">
               <iframe
@@ -218,25 +166,11 @@ const heroSlide: HeroSlide | null = movie
 
         {/* ── Cast ── */}
         {cast.length > 0 && (
-          <section class="detail-section" data-reveal aria-labelledby="cast-heading">
+          <section class="detail-section detail-hide-mobile" data-reveal aria-labelledby="cast-heading">
             <h2 class="detail-section-title" id="cast-heading">Cast</h2>
             {castPhotos.length > 0 && (
               <div class="cast-gallery-mobile">
                 <CastGallery client:visible photos={castPhotos} />
-              </div>
-            )}
-            {castGalleryImages.length > 0 && (
-              <div class="cast-gallery-desktop">
-                <InfiniteGallery
-                  client:visible
-                  images={castGalleryImages}
-                  speed={1.2}
-                  zSpacing={3}
-                  visibleCount={12}
-                  falloff={{ near: 0.8, far: 14 }}
-                  className="cast-3d-canvas"
-                />
-                <p class="cast-3d-hint">Scroll, use arrow keys, or drag to explore the cast</p>
               </div>
             )}
             <div class="cast-grid" role="list">
@@ -272,7 +206,7 @@ const heroSlide: HeroSlide | null = movie
         )}
 
         {/* ── Details ── */}
-        <section class="detail-section" data-reveal aria-labelledby="details-heading">
+        <section class="detail-section detail-hide-mobile" data-reveal aria-labelledby="details-heading">
           <h2 class="detail-section-title" id="details-heading">Details</h2>
           <dl class="detail-facts">
             {movie.status && (
@@ -572,79 +506,17 @@ const heroSlide: HeroSlide | null = movie
     margin-bottom: 3rem;
   }
 
+  /* Hide Trailer, Cast and Details sections on mobile (<768px). */
+  @media (max-width: 767px) {
+    .detail-hide-mobile { display: none !important; }
+  }
+
   .detail-section-title {
     font-size: var(--font-size-xl);
     font-weight: 600;
     color: var(--color-text);
     letter-spacing: var(--letter-spacing-tight);
     margin: 0 0 1.25rem;
-  }
-
-  /* Providers */
-  .providers-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    margin-bottom: 0.75rem;
-  }
-
-  .provider-group-title {
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: var(--letter-spacing-wider);
-    color: var(--color-text-3);
-    margin: 0 0 0.75rem;
-  }
-
-  .provider-logos {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-
-  .provider-logo-link {
-    display: block;
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    transition: transform var(--duration-fast) ease, opacity var(--duration-fast) ease;
-    border: 1px solid var(--color-border);
-  }
-
-  .provider-logo-link:hover {
-    transform: scale(1.05);
-    opacity: 0.85;
-  }
-
-  .provider-logo {
-    width: 52px;
-    height: 52px;
-    object-fit: cover;
-    display: block;
-  }
-
-  .providers-empty {
-    padding: 1.5rem;
-    border: 1px dashed var(--color-border);
-    border-radius: var(--radius-md);
-    text-align: center;
-    font-size: var(--font-size-sm);
-    color: var(--color-text-3);
-  }
-
-  .providers-tmdb-link, .providers-attribution a {
-    color: var(--color-accent-from);
-    text-decoration: none;
-  }
-
-  .providers-tmdb-link:hover, .providers-attribution a:hover {
-    text-decoration: underline;
-  }
-
-  .providers-attribution {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-3);
-    margin-top: 0.5rem;
   }
 
   /* Trailer — full screen height, 16:9 width, centred */
@@ -679,8 +551,8 @@ const heroSlide: HeroSlide | null = movie
     .cast-gallery-desktop { display: block; }
   }
 
-  /* 3D cast gallery (desktop + tablet only) — sized as large as the homepage
-     FeaturedGallery + GalleryShowcase sections (matches the taller showcase). */
+  /* 3D cast gallery (desktop + tablet only) — sized to match the homepage
+     FeaturedGallery section height. */
   .cast-3d-canvas {
     width: 100%;
     height: clamp(360px, 70svh, 100svh);

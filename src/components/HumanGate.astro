@@ -99,12 +99,20 @@ const SITE_KEY = '1x00000000000000000000AA';
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1.25rem;
+    /* Respect notches / home indicators on iOS */
+    padding:
+      calc(1.25rem + env(safe-area-inset-top, 0px))
+      calc(1.25rem + env(safe-area-inset-right, 0px))
+      calc(1.25rem + env(safe-area-inset-bottom, 0px))
+      calc(1.25rem + env(safe-area-inset-left, 0px));
     background:
       radial-gradient(1200px 720px at 50% -10%, rgba(66,133,244,0.18), transparent 60%),
       radial-gradient(1000px 900px at 110% 8%, rgba(161,66,244,0.14), transparent 58%),
       #000;
     animation: hg-fade-in 0.35s ease both;
+    /* Allow scrolling if the widget ever overflows a very short screen. */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   /* Hidden immediately for already-verified sessions (no flash). */
   html.nx-verified #human-gate { display: none !important; }
@@ -192,6 +200,79 @@ const SITE_KEY = '1x00000000000000000000AA';
   html[data-theme="light"] .hg-desc { color: rgba(0, 0, 0, 0.6); }
   html[data-theme="light"] .hg-status { color: rgba(0, 0, 0, 0.45); }
   html[data-theme="light"] .hg-fine { color: rgba(0, 0, 0, 0.35); }
+
+  /* ── Tablet + phone (≤ 767px) ─────────────────────────── */
+  @media (max-width: 767px) {
+    .hg-card {
+      max-width: 100%;
+      padding: 1.75rem 1.25rem 1.375rem;
+      border-radius: 18px;
+    }
+    .hg-badge {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 0.75rem;
+      border-radius: 14px;
+    }
+    .hg-badge svg { width: 22px; height: 22px; }
+    .hg-title {
+      font-size: 1.35rem;
+      line-height: 1.2;
+    }
+    .hg-desc {
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin-bottom: 1.125rem;
+    }
+    .hg-widget { min-height: 65px; }
+    /* Keep the Turnstile iframe from overflowing narrow viewports */
+    .hg-widget iframe {
+      max-width: 100% !important;
+    }
+    .hg-status { font-size: 0.7rem; margin-top: 0.75rem; }
+    .hg-fine { font-size: 0.625rem; margin-top: 0.5rem; }
+  }
+
+  /* ── Very small phones (≤ 380px) ──────────────────────── */
+  @media (max-width: 380px) {
+    #human-gate {
+      padding:
+        calc(0.875rem + env(safe-area-inset-top, 0px))
+        calc(0.875rem + env(safe-area-inset-right, 0px))
+        calc(0.875rem + env(safe-area-inset-bottom, 0px))
+        calc(0.875rem + env(safe-area-inset-left, 0px));
+    }
+    .hg-card {
+      padding: 1.5rem 1rem 1.125rem;
+      border-radius: 16px;
+    }
+    .hg-badge {
+      width: 44px;
+      height: 44px;
+      margin-bottom: 0.625rem;
+    }
+    .hg-title { font-size: 1.2rem; }
+    .hg-desc {
+      font-size: 0.8125rem;
+      margin-bottom: 1rem;
+    }
+  }
+
+  /* ── Landscape short screens (phones held sideways) ──── */
+  @media (max-height: 480px) and (orientation: landscape) {
+    #human-gate { align-items: flex-start; }
+    .hg-card {
+      padding: 1.25rem 1.25rem 1rem;
+      max-width: 22rem;
+    }
+    .hg-badge {
+      width: 40px;
+      height: 40px;
+      margin-bottom: 0.5rem;
+    }
+    .hg-title { font-size: 1.15rem; margin-bottom: 0.25rem; }
+    .hg-desc { font-size: 0.8125rem; margin-bottom: 0.875rem; }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     #human-gate { animation: none; }

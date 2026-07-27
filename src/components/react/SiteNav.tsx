@@ -70,9 +70,22 @@ export default function SiteNav({ user, pathname = "/" }: Props) {
 
   useEffect(() => {
     setCurrentPath(window.location.pathname);
-    const handler = () => setCurrentPath(window.location.pathname);
-    document.addEventListener("astro:page-load", handler);
-    return () => document.removeEventListener("astro:page-load", handler);
+    // astro:page-load only fires once the new document has been fetched and
+    // swapped, so highlighting the pill there left the navbar looking frozen for
+    // the whole navigation. astro:before-preparation fires synchronously when the
+    // navigation starts, so the highlight moves the instant the link is clicked
+    // and page-load then just confirms it (and covers back/forward).
+    const onStart = (e: Event) => {
+      const to = (e as CustomEvent & { to?: URL }).to;
+      if (to?.pathname) setCurrentPath(to.pathname);
+    };
+    const onDone = () => setCurrentPath(window.location.pathname);
+    document.addEventListener('astro:before-preparation', onStart);
+    document.addEventListener('astro:page-load', onDone);
+    return () => {
+      document.removeEventListener('astro:before-preparation', onStart);
+      document.removeEventListener('astro:page-load', onDone);
+    };
   }, []);
 
   // Scroll-shrink
@@ -221,6 +234,15 @@ export default function SiteNav({ user, pathname = "/" }: Props) {
                 <motion.a
                   key={link.href}
                   href={link.href}
+                  /* The global prefetch strategy is "hover" (astro.config.mjs),
+                     which never fires on touch devices and only starts after an
+                     80ms dwell on desktop. The nav pill is position:fixed, so it
+                     is always in the viewport — "viewport" prefetches these seven
+                     routes shortly after load, on every device, and the click
+                     then swaps HTML that is already in cache. Deliberately scoped
+                     to the navbar: viewport prefetch on the content rails is what
+                     caused dozens of SSR requests while scrolling. */
+                  data-astro-prefetch="viewport"
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: i * 0.04 }}

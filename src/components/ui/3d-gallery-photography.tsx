@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useRef, useMemo, useCallback, useState, useEffect } from 'react';
+import { useRef, useMemo, useCallback, useState, useEffect, Suspense } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
@@ -466,8 +466,9 @@ function GalleryScene({
         const worldZ = plane.z - depthRange / 2;
 
         // Calculate scale to maintain aspect ratio
-        const aspect = texture.image
-          ? texture.image.width / texture.image.height
+        const image = texture.image as { width?: number; height?: number } | undefined;
+        const aspect = image?.width && image?.height
+          ? image.width / image.height
           : 1;
         const scale: [number, number, number] =
           aspect > 1 ? [2 * aspect, 2, 1] : [2, 2 / aspect, 1];
@@ -558,12 +559,18 @@ export default function InfiniteGallery({
       <Canvas
         camera={{ position: [0, 0, 0], fov: 55 }}
         gl={{ antialias: true, alpha: true }}
+        // Cap the resolution: a 3x-DPR phone would otherwise render ~9x the
+        // pixels of a 1x screen for this full-width canvas, which is the single
+        // biggest cost of showing the gallery on mobile.
+        dpr={[1, 2]}
       >
-        <GalleryScene
-          images={images}
-          fadeSettings={fadeSettings}
-          blurSettings={blurSettings}
-        />
+        <Suspense fallback={null}>
+          <GalleryScene
+            images={images}
+            fadeSettings={fadeSettings}
+            blurSettings={blurSettings}
+          />
+        </Suspense>
       </Canvas>
     </div>
   );

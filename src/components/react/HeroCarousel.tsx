@@ -3,6 +3,23 @@ import type { HeroSlide } from '../../lib/tmdb';
 
 const SLIDE_MS = 3000; // 3 seconds per slide
 
+/**
+ * Build a width ladder for a TMDB backdrop URL.
+ *
+ * `buildHeroSlides` returns backdrops at a fixed `/w1280/`. TMDB exposes the
+ * same still at several widths under the same path, so we can offer the browser
+ * a choice instead of forcing the largest one on every device. Returns
+ * undefined for anything that is not a recognisable TMDB w1280 URL, in which
+ * case the plain `src` is used unchanged.
+ */
+function backdropSrcSet(url: string): string | undefined {
+  if (!url.includes('/w1280/')) return undefined;
+  const widths = [780, 1280];
+  return widths
+    .map((w) => `${url.replace('/w1280/', `/w${w}/`)} ${w}w`)
+    .join(', ');
+}
+
 interface Props {
   slides: HeroSlide[];
   label?: string;
@@ -14,6 +31,7 @@ export default function HeroCarousel({ slides, label }: Props) {
   const [paused, setPaused] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   const goTo = useCallback((i: number) => {
     if (count === 0) return;
@@ -39,24 +57,28 @@ export default function HeroCarousel({ slides, label }: Props) {
     return () => window.clearTimeout(id);
   }, [index, paused, reduceMotion, count, next]);
 
-  // Preload next slide.
-  useEffect(() => {
-    if (count <= 1) return;
-    const nextUrl = slides[(index + 1) % count]?.backdropUrl;
-    if (nextUrl) { const img = new Image(); img.src = nextUrl; }
-  }, [index, count, slides]);
-
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
   }, [next, prev]);
 
-  const onTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    setPaused(true); // don't advance while the user is interacting
+  };
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
+    setPaused(false);
+    if (touchStartX.current === null || touchStartY.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(dx) > 48) (dx < 0 ? next : prev)();
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    // Only treat as a slide swipe when the gesture is clearly horizontal —
+    // otherwise a vertical scroll would accidentally change slides.
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      (dx < 0 ? next : prev)();
+    }
     touchStartX.current = null;
+    touchStartY.current = null;
   };
 
   if (count === 0) return null;
@@ -77,22 +99,35 @@ export default function HeroCarousel({ slides, label }: Props) {
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
-      {/* Backdrop images — crossfade stack */}
+      {/* Only mount the active and adjacent images. Absolutely positioned lazy
+          images all count as in-viewport, so mounting every slide fetched every
+          w1280 backdrop immediately. */}
       <div className="nf-stage" aria-hidden="true">
-        {slides.map((s, i) => (
+        {slides.map((s, i) => {
+          const shouldLoad = i === index || i === (index + 1) % count || i === (index - 1 + count) % count;
+          const srcSet = s.backdropUrl ? backdropSrcSet(s.backdropUrl) : undefined;
+          return (
           <div key={s.id} className={`nf-bg ${i === index ? 'nf-bg--active' : ''}`}>
-            {s.backdropUrl && (
+            {s.backdropUrl && shouldLoad && (
               <img
                 src={s.backdropUrl}
+                /* buildHeroSlides bakes w1280 into backdropUrl, so a phone was
+                   downloading a desktop-sized backdrop (up to ~230 kB each, and
+                   three slides are mounted at a time — the single largest item
+                   in a page's transfer). TMDB serves the same still at fixed
+                   widths, so hand the browser the ladder and let it pick. */
+                srcSet={srcSet}
+                sizes="100vw"
                 alt=""
                 className="nf-bg-img"
-                loading={i === 0 ? 'eager' : 'lazy'}
+                loading={i === index ? 'eager' : 'lazy'}
                 decoding="async"
-                fetchPriority={i === 0 ? 'high' : 'low'}
+                fetchPriority={i === index ? 'high' : 'low'}
               />
             )}
           </div>
-        ))}
+          );
+        })}
         {/* Gradient overlays */}
         <div className="nf-grad-bottom" />
         <div className="nf-grad-left" />
@@ -199,9 +234,12 @@ export default function HeroCarousel({ slides, label }: Props) {
           overflow: hidden;
           background: #000;
           outline: none;
+          touch-action: pan-y; /* allow vertical scroll; we handle horizontal swipes */
         }
         @media (max-width: 767px) {
-          .nf-hero { min-height: 88svh; max-height: 88svh; }
+          .nf-hero { min-height: 82svh; max-height: 82svh; }
+          /* Frame the subject's face/upper body on portrait screens */
+          .nf-bg-img { object-position: center 18%; }
         }
 
         /* ── Backdrop ── */
@@ -246,9 +284,26 @@ export default function HeroCarousel({ slides, label }: Props) {
         }
         @media (max-width: 767px) {
           .nf-content {
-            padding: 0 1rem calc(72px + env(safe-area-inset-bottom, 0px) + 1.5rem) 1rem;
+            padding: 0 1.25rem calc(64px + env(safe-area-inset-bottom, 0px) + 1rem);
             max-width: 100%;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
           }
+          /* Centered text reads best over a taller bottom fade; drop the
+             left vignette which only helps left-aligned desktop copy. */
+          .nf-grad-bottom {
+            background: linear-gradient(
+              to top,
+              #000 0%,
+              rgba(0,0,0,0.94) 24%,
+              rgba(0,0,0,0.6) 50%,
+              rgba(0,0,0,0.15) 78%,
+              transparent 100%
+            );
+          }
+          .nf-grad-left { display: none; }
         }
 
 
@@ -303,6 +358,7 @@ export default function HeroCarousel({ slides, label }: Props) {
         }
         @media (max-width: 767px) {
           .nf-title { font-size: clamp(1.75rem, 7vw, 2.5rem); }
+          .nf-meta { justify-content: center; gap: 0.4rem; margin-bottom: 0.5rem; }
         }
 
         /* Genres */
@@ -331,7 +387,26 @@ export default function HeroCarousel({ slides, label }: Props) {
           overflow: hidden;
           animation: nf-fade-up 0.5s ease backwards; animation-delay: 160ms;
         }
-        @media (max-width: 767px) { .nf-overview { -webkit-line-clamp: 2; } }
+        @media (max-width: 767px) {
+          .nf-overview {
+            -webkit-line-clamp: 3;
+            margin-bottom: 1.25rem;
+            font-size: 0.875rem;
+          }
+          /* Centered genres read cleaner with dot separators than left borders */
+          .nf-genres { justify-content: center; gap: 0.5rem; margin-bottom: 0.875rem; }
+          .nf-genre {
+            border-left: none;
+            padding-left: 0;
+            color: rgba(255,255,255,0.7);
+          }
+          .nf-genre:first-child { color: rgba(255,255,255,0.7); }
+          .nf-genre:not(:first-child)::before {
+            content: '•';
+            margin-right: 0.5rem;
+            color: rgba(255,255,255,0.4);
+          }
+        }
 
         /* Buttons */
         .nf-actions {
@@ -373,26 +448,37 @@ export default function HeroCarousel({ slides, label }: Props) {
         .nf-btn--wl:hover { border-color: #fff; color: #fff; }
         .nf-btn--wl--saved { border-color: #e50914; color: #e50914; }
         @media (max-width: 767px) {
+          /* Netflix-style stack: full-width Play on its own row, with
+             More Info + watchlist wrapping neatly beneath it. */
+          .nf-actions {
+            justify-content: center;
+            /* More breathing room between buttons and between the two rows */
+            gap: 0.875rem;
+            width: 100%;
+            max-width: 420px;
+            /* Separate the button cluster from the overview above it */
+            margin: 0.5rem auto 0;
+          }
           .nf-btn {
-            padding: 0.75rem 1.375rem;
+            /* Roomier interior padding + comfortable tap target */
+            gap: 0.6rem;
+            padding: 0.9rem 1.75rem;
             font-size: 0.9375rem;
             border-radius: 9999px;
-            min-height: 48px;
+            min-height: 52px;
+          }
+          .nf-btn--play {
+            flex: 1 1 100%;
+            justify-content: center;
+            padding-inline: 2rem;
+          }
+          .nf-btn--info {
+            flex: 1 1 auto;
+            justify-content: center;
           }
           .nf-btn--wl {
-            width: 48px; height: 48px;
-          }
-        }
-        @media (max-width: 767px) {
-          .nf-actions { gap: 0.5rem; }
-          .nf-btn {
-            padding: 0.75rem 1.375rem;
-            font-size: 0.9375rem;
-            min-height: 48px;
-            border-radius: 9999px;
-          }
-          .nf-btn--wl {
-            width: 48px; height: 48px;
+            width: 52px; height: 52px;
+            padding: 0;
             border-radius: 50%;
             flex-shrink: 0;
           }
@@ -418,7 +504,10 @@ export default function HeroCarousel({ slides, label }: Props) {
           padding: 0.75rem 4% 1.25rem;
         }
         @media (max-width: 767px) {
-          .nf-strip { padding: 0.5rem 1rem 1rem; gap: 0.5rem; }
+          .nf-strip { padding: 0.75rem 1rem 1.25rem; gap: 0.5rem; }
+          .nf-dots { gap: 0.5rem; }
+          .nf-dot { width: 8px; height: 8px; border-radius: 50%; }
+          .nf-dot--active { width: 22px; border-radius: 4px; }
         }
         .nf-dots { display: flex; gap: 0.375rem; align-items: center; }
         .nf-dot {

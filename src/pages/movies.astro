@@ -4,6 +4,7 @@ import Layout from '../layouts/Layout.astro';
 import PosterCard from '../components/PosterCard.astro';
 import FilterPanel from '../components/react/FilterPanel';
 import HeroCarousel from '../components/react/HeroCarousel';
+import Pagination from '../components/ui/pagination';
 import { discoverMovies, getMovieGenres, getTrendingMovies, buildHeroSlides } from '../lib/tmdb';
 import type { TMDBMovieBase } from '../lib/types';
 
@@ -26,6 +27,9 @@ let heroSlides: Awaited<ReturnType<typeof buildHeroSlides>> = [];
 
 try {
   // Fetch grid movies + genres + top trending movies for the hero in parallel.
+  // Only the grid is critical: genres (filter chips) and trending (hero) must
+  // never take the whole page down if a transient network error hits them.
+  const emptyList = { results: [] as TMDBMovieBase[], page: 1, total_pages: 0, total_results: 0 };
   const [moviesRes, genresRes, trendingRes] = await Promise.all([
     discoverMovies({
       page,
@@ -36,8 +40,8 @@ try {
       'vote_average.gte': minRating ? parseFloat(minRating) : undefined,
       with_original_language: lang || undefined,
     }),
-    getMovieGenres(),
-    getTrendingMovies('week'),
+    getMovieGenres().catch(() => ({ genres: [] })),
+    getTrendingMovies('week').catch(() => emptyList),
   ]);
   movies = moviesRes.results;
   totalPages = Math.min(moviesRes.total_pages, 500);
@@ -45,28 +49,12 @@ try {
   genres = genresRes.genres;
 
   // Build enriched hero slides (movies only, top 5).
-  heroSlides = await buildHeroSlides(trendingRes.results, 'movie', 5);
+  heroSlides = await buildHeroSlides(trendingRes.results, 'movie', 5).catch(() => []);
 } catch (e) {
   error = e instanceof Error ? e.message : 'Failed to load movies';
 }
 
-// Pagination helpers
-const pageCount = Math.min(7, totalPages);
-const pageNumbers: number[] = Array.from({ length: pageCount }, (_, i) => {
-  if (totalPages <= 7) return i + 1;
-  if (page <= 4) return i + 1;
-  if (page + 3 >= totalPages) return totalPages - 6 + i;
-  return page - 3 + i;
-});
-
-function pageUrl(p: number) {
-  const params = new URLSearchParams(url.searchParams);
-  params.set('page', String(p));
-  return `/movies?${params.toString()}`;
-}
-
-const showPrev = page > 1;
-const showNext = page < totalPages;
+// Pagination is handled by the Ark UI <Pagination> island (URL-driven).
 const initialFilters = {
   genres: genresParam ? genresParam.split(',').map(Number) : [],
   sortBy,
@@ -75,9 +63,16 @@ const initialFilters = {
   minRating,
   language: lang,
 };
+
+// Landscape backdrops (relevant to this page) for the shared cinematic gallery.
+const galleryImages: string[] = movies
+  .map((m) => m.backdrop_path)
+  .filter(Boolean)
+  .slice(0, 12)
+  .map((p) => `https://image.tmdb.org/t/p/w780${p}`);
 ---
 
-<Layout title="Movies — Browse & Find Where to Watch">
+<Layout title="Movies — Browse & Find Where to Watch" galleryImages={galleryImages}>
 
   {/* ── Movies-only hero carousel (Top 5 Trending Movies) ── */}
   {heroSlides.length > 0 && (
@@ -137,38 +132,13 @@ const initialFilters = {
           ))}
         </div>
 
-        {totalPages > 1 && (
-          <nav class="pagination" aria-label="Pagination">
-            {showPrev && (
-              <a href={pageUrl(page - 1)} class="btn btn-secondary pagination-btn" aria-label="Previous page">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m15 18-6-6 6-6"/>
-                </svg>
-                Previous
-              </a>
-            )}
-            <div class="pagination-pages" aria-label="Page numbers">
-              {pageNumbers.map((p) => (
-                <a
-                  href={pageUrl(p)}
-                  class={`pagination-page ${p === page ? 'pagination-page--active' : ''}`}
-                  aria-current={p === page ? 'page' : undefined}
-                  aria-label={`Page ${p}`}
-                >
-                  {p}
-                </a>
-              ))}
-            </div>
-            {showNext && (
-              <a href={pageUrl(page + 1)} class="btn btn-secondary pagination-btn" aria-label="Next page">
-                Next
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m9 18 6-6-6-6"/>
-                </svg>
-              </a>
-            )}
-          </nav>
-        )}
+        <Pagination
+          client:load
+          totalPages={totalPages}
+          page={page}
+          basePath="/movies"
+          search={url.search}
+        />
       </>
     )}
   </div>

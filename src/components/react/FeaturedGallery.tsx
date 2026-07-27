@@ -1,7 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import InfiniteGallery from '../ui/3d-gallery-photography';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+
+/**
+ * The WebGL gallery (three.js + @react-three/fiber + drei) is ~870 kB of
+ * JavaScript — more than the rest of the site put together. It used to be a
+ * static import, which meant every single page navigation paid for the whole
+ * three.js bundle plus a fresh WebGL context before this island could render,
+ * even on phones and even when the section sat far below the fold.
+ *
+ * It is now a dynamic import behind an IntersectionObserver: the section shell,
+ * headline and hint below are plain server-rendered markup, and the canvas
+ * chunk is only requested once the section is actually approaching the
+ * viewport. Same gallery, same props, same visuals — just not on the critical
+ * path of a navigation.
+ */
+const InfiniteGallery = lazy(() => import('../ui/3d-gallery-photography'));
 
 interface Props {
   images?: string[];
@@ -49,15 +63,19 @@ const DEMO_IMAGES = [
  * Prop `images` is optional; if omitted the demo images are used.
  */
 export default function FeaturedGallery({ images }: Props) {
-  // Hide this heavy 3D WebGL gallery on mobile (≤768px). Mirrors the
-  // matchMedia convention used in MoodMatch; returning null means the
-  // Three.js canvas never mounts on phones. The initial state is resolved
-  // synchronously from matchMedia (this is a client:only island, so `window`
-  // is always available on first render) — that way the WebGL canvas is never
-  // even briefly mounted on phones, avoiding a flash and the Three.js cost.
-  const [isMobile, setIsMobile] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
-  );
+  // Phones get the gallery too, but not the desktop configuration: fewer
+  // simultaneous planes, a shorter section and a tighter depth falloff — enough
+  // to keep the effect while cutting the per-frame work on the GPU a phone
+  // actually has.
+  //
+  // Resolved in an effect rather than during the first render because this
+  // island is now server-rendered (it used to be client:only, which forced
+  // Astro to reload the whole target page in a hidden iframe on every
+  // view-transition navigation — see prepareForClientOnlyComponents in
+  // astro/dist/transitions/router.js). `false` matches the desktop layout the
+  // server emits; phones correct it on the first client tick, before the canvas
+  // is ever mounted.
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const query = window.matchMedia('(max-width: 768px)');
@@ -67,7 +85,29 @@ export default function FeaturedGallery({ images }: Props) {
     return () => query.removeEventListener('change', update);
   }, []);
 
-  if (isMobile) return null;
+  // Only mount the WebGL canvas once the section is near the viewport. This is
+  // what keeps three.js off the navigation critical path.
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    if (!('IntersectionObserver' in window)) { setInView(true); return; }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setInView(true);
+          io.disconnect();
+        }
+      },
+      // Start loading a little before it scrolls in so the canvas is ready by
+      // the time the section is actually on screen.
+      { rootMargin: '300px 0px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   // Convert plain string URLs to the { src, alt } format the gallery expects.
   const galleryImages =
@@ -77,24 +117,31 @@ export default function FeaturedGallery({ images }: Props) {
 
   return (
     <section
+      ref={sectionRef}
       style={{
         position: 'relative',
         width: '100%',
-        height: 'clamp(320px, 65vw, 900px)',
+        // Shorter on phones so the section does not eat a whole screen of scroll.
+        height: isMobile ? 'clamp(260px, 52vh, 420px)' : 'clamp(320px, 65vw, 900px)',
         overflow: 'hidden',
         background: '#000',
       }}
       aria-label="Featured gallery"
     >
-      {/* 3D gallery fills the entire section */}
-      <InfiniteGallery
-        images={galleryImages}
-        speed={1.2}
-        zSpacing={3}
-        visibleCount={12}
-        falloff={{ near: 0.8, far: 14 }}
-        className="h-full w-full rounded-lg overflow-hidden"
-      />
+      {/* 3D gallery fills the entire section — mounted on approach, not on load */}
+      {inView && (
+        <Suspense fallback={null}>
+          <InfiniteGallery
+            images={galleryImages}
+            speed={isMobile ? 0.9 : 1.2}
+            zSpacing={3}
+            // 12 planes in flight is a desktop budget; 6 keeps phones smooth.
+            visibleCount={isMobile ? 6 : 12}
+            falloff={isMobile ? { near: 0.8, far: 9 } : { near: 0.8, far: 14 }}
+            className="h-full w-full rounded-lg overflow-hidden"
+          />
+        </Suspense>
+      )}
 
       {/* Centred serif headline with mix-blend exclusion */}
       <div

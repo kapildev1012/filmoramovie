@@ -16,6 +16,26 @@ interface Env {
 
 type CFRuntime = import('@astrojs/cloudflare').Runtime<Env>;
 
+/**
+ * Opt-in verbose logging for the TMDB client's retry loop (src/lib/tmdb.ts).
+ * Set `globalThis.__TMDB_DEBUG__ = true` in a dev session to print each failed
+ * attempt with its stack; unset in production.
+ */
+declare var __TMDB_DEBUG__: boolean | undefined;
+
+/**
+ * Build fingerprint injected by Vite (`define` in astro.config.mjs). Used by
+ * src/middleware.ts to version the edge HTML cache key, so a new build never
+ * serves HTML rendered by the previous one.
+ */
+declare const __BUILD_ID__: string;
+
 declare namespace App {
-  interface Locals extends CFRuntime {}
+  interface Locals extends CFRuntime {
+    /** @deprecated Prefer cfContext plus astro:env; retained for existing D1 routes. */
+    runtime: {
+      env: Env;
+      ctx: ExecutionContext;
+    };
+  }
 }

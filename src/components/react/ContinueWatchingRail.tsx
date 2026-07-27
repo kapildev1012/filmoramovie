@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getContinueWatching, type ContinueEntry } from '../../lib/continueWatching';
 
 interface WatchItem {
   id: number;
@@ -8,22 +9,52 @@ interface WatchItem {
   addedAt?: string;
 }
 
+interface RailItem {
+  id: number;
+  mediaType: 'movie' | 'tv';
+  title: string;
+  posterUrl: string | null;
+  /** Sub-label e.g. "S1 · E3" for series in progress. */
+  sub?: string | null;
+}
+
 /**
- * Personalized rail sourced from the browser's watchlist (localStorage).
- * Renders nothing until mounted and only if the user has saved items — so it
- * never causes SSR/CSR mismatch and stays out of the way for new visitors.
+ * "Continue Watching" rail. Prefers real playback history recorded by the
+ * players (localStorage `filmora_continue`); if the visitor hasn't watched
+ * anything yet it falls back to their saved watchlist so the rail is still
+ * useful. Renders nothing until mounted and only when there is something to
+ * show — so it never causes an SSR/CSR mismatch.
  */
-export default function ContinueWatchingRail({ title = 'From Your Watchlist' }: { title?: string }) {
-  const [items, setItems] = useState<WatchItem[] | null>(null);
+export default function ContinueWatchingRail({ title = 'Continue Watching' }: { title?: string }) {
+  const [items, setItems] = useState<RailItem[] | null>(null);
 
   useEffect(() => {
-    try {
-      const wl = JSON.parse(localStorage.getItem('filmora_watchlist') || '[]') as WatchItem[];
-      const sorted = [...wl].sort((a, b) => (b.addedAt ?? '').localeCompare(a.addedAt ?? ''));
-      setItems(sorted.slice(0, 20));
-    } catch {
-      setItems([]);
-    }
+    const load = () => {
+      try {
+        const cont = getContinueWatching();
+        if (cont.length > 0) {
+          setItems(
+            cont.slice(0, 20).map((e: ContinueEntry) => ({
+              id: e.id,
+              mediaType: e.mediaType,
+              title: e.title,
+              posterUrl: e.posterUrl,
+              sub: e.mediaType === 'tv' && e.season && e.episode ? `S${e.season} · E${e.episode}` : null,
+            }))
+          );
+          return;
+        }
+        // Fallback: saved watchlist.
+        const wl = JSON.parse(localStorage.getItem('filmora_watchlist') || '[]') as WatchItem[];
+        const sorted = [...wl].sort((a, b) => (b.addedAt ?? '').localeCompare(a.addedAt ?? ''));
+        setItems(sorted.slice(0, 20).map((it) => ({ ...it, sub: null })));
+      } catch {
+        setItems([]);
+      }
+    };
+    load();
+    window.addEventListener('filmora:continue-updated', load);
+    return () => window.removeEventListener('filmora:continue-updated', load);
   }, []);
 
   if (!items || items.length === 0) return null;
@@ -40,10 +71,10 @@ export default function ContinueWatchingRail({ title = 'From Your Watchlist' }: 
         </div>
         <div className="scroll-rail" role="list">
           {items.map((it) => {
-            const href = it.mediaType === 'movie' ? `/movie/${it.id}` : `/series/${it.id}`;
+            const href = it.mediaType === 'movie' ? `/movie/${it.id}#watch` : `/series/${it.id}#watch`;
             return (
               <div role="listitem" key={`${it.mediaType}-${it.id}`} className="cw-card">
-                <a href={href} className="cw-link" aria-label={it.title}>
+                <a href={href} className="cw-link" aria-label={`Resume ${it.title}`}>
                   <div className="cw-img-wrap">
                     {it.posterUrl ? (
                       <img src={it.posterUrl} alt="" className="cw-img" loading="lazy" decoding="async" />
@@ -53,6 +84,7 @@ export default function ContinueWatchingRail({ title = 'From Your Watchlist' }: 
                     <span className="cw-resume" aria-hidden="true">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                     </span>
+                    {it.sub && <span className="cw-sub">{it.sub}</span>}
                   </div>
                   <h3 className="cw-title">{it.title}</h3>
                 </a>
@@ -86,6 +118,11 @@ export default function ContinueWatchingRail({ title = 'From Your Watchlist' }: 
           opacity:0; transform:scale(0.8); transition:all .2s var(--ease-out-fast);
         }
         .cw-card:hover .cw-resume { opacity:1; transform:scale(1); }
+        .cw-sub {
+          position:absolute; left:0; right:0; bottom:0; padding:0.35rem 0.5rem;
+          font-size:0.7rem; font-weight:700; color:#fff; letter-spacing:0.03em;
+          background:linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+        }
         .cw-title { font-size:var(--font-size-sm); font-weight:500; color:var(--color-text); margin:0.5rem 0 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         @media (max-width: 767px) {
           .cw-card { width: 120px; }

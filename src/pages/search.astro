@@ -1,326 +1,88 @@
 ---
-// src/pages/search.astro — /search page
+// src/pages/search.astro — /search with instant, type-as-you-go results.
+//
+// The page still server-renders whatever `?q=` asks for (good for SEO and
+// shared links), then hands that same payload to the InstantSearch island so
+// hydration is seamless. From there every keystroke updates the grid — a
+// single letter is enough, and there is no Enter or button to press.
 import Layout from '../layouts/Layout.astro';
-import PosterCard from '../components/PosterCard.astro';
-import { searchMovies, searchSeries, searchPeople } from '../lib/tmdb';
+import InstantSearch from '../components/react/InstantSearch';
+import { buildLiveSearch, buildRecommended, normalizeTab } from '../lib/liveSearch';
+import type { LiveSearchPayload, RecommendedPayload } from '../lib/liveSearch';
 
 const url = Astro.url;
 const q = url.searchParams.get('q')?.trim() ?? '';
-const tab = url.searchParams.get('tab') ?? 'all';
-const page = parseInt(url.searchParams.get('page') ?? '1');
+const tab = normalizeTab(url.searchParams.get('tab'));
 
-let movies: Awaited<ReturnType<typeof searchMovies>>['results'] = [];
-let series: Awaited<ReturnType<typeof searchSeries>>['results'] = [];
-let people: Awaited<ReturnType<typeof searchPeople>>['results'] = [];
-let movieTotal = 0, seriesTotal = 0, peopleTotal = 0;
-let error: string | null = null;
+// Only fetch what the first paint needs: results when there is a query,
+// trending recommendations when there isn't.
+const [initialData, recommended] = await Promise.all([
+  q ? buildLiveSearch(q, tab).catch((): LiveSearchPayload | null => null) : Promise.resolve(null),
+  buildRecommended().catch((): RecommendedPayload => ({ movies: [], series: [] })),
+]);
 
-if (q) {
-  try {
-    if (tab === 'all' || tab === 'movies') {
-      const r = await searchMovies(q, page);
-      movies = r.results;
-      movieTotal = r.total_results;
-    }
-    if (tab === 'all' || tab === 'series') {
-      const r = await searchSeries(q, page);
-      series = r.results;
-      seriesTotal = r.total_results;
-    }
-    if (tab === 'all' || tab === 'people') {
-      const r = await searchPeople(q, page);
-      people = r.results;
-      peopleTotal = r.total_results;
-    }
-  } catch (e) {
-    error = e instanceof Error ? e.message : 'Search failed';
-  }
-}
-
-function tabUrl(t: string) {
-  const params = new URLSearchParams(url.searchParams);
-  params.set('tab', t);
-  params.delete('page');
-  return `/search?${params.toString()}`;
-}
-
-const TMDB_IMG = 'https://image.tmdb.org/t/p';
-
-// Popular searches for empty state
 const POPULAR_QUERIES = [
   'Inception', 'Interstellar', 'Breaking Bad', 'Oppenheimer',
-  'Dune', 'The Bear', 'Shogun', 'Fallout', 'Dark', 'Parasite'
+  'Dune', 'The Bear', 'Shogun', 'Fallout', 'Dark', 'Parasite',
 ];
+
+const TMDB_IMG = 'https://image.tmdb.org/t/p';
+const galleryImages: string[] = [
+  ...(initialData?.movies ?? []),
+  ...(initialData?.series ?? []),
+  ...recommended.movies,
+  ...recommended.series,
+]
+  .map((r) => r.backdropPath)
+  .filter((p): p is string => Boolean(p))
+  .slice(0, 12)
+  .map((p) => `${TMDB_IMG}/w780${p}`);
+
+const resultCount = initialData
+  ? initialData.movies.length + initialData.series.length + initialData.people.length
+  : 0;
 ---
 
-<Layout title={q ? `"${q}" — Search` : 'Search — Filmora Movie'}>
+<Layout
+  title={q ? `"${q}" — Search` : 'Search'}
+  description={q
+    ? `Search results for "${q}" — movies, series and people on Filmora Movie.`
+    : 'Search every movie and series. Results appear as you type — one letter is enough.'}
+  galleryImages={galleryImages}
+>
   <div class="container search-page">
-    
-    <div class="search-header">
+    <header class="search-head">
       <h1 class="search-title">
         {q ? (
-          <>Search results for <span class="search-query">"{q}"</span></>
-        ) : 'Search'}
+          <>Results for <span class="search-title-q">"{q}"</span></>
+        ) : (
+          <>Find anything to <span class="search-title-q">watch</span></>
+        )}
       </h1>
-    </div>
+      <p class="search-sub">
+        {q && resultCount > 0
+          ? `${resultCount.toLocaleString()} matches, ranked by relevance.`
+          : 'Start typing a title, an actor, or even a single letter — recommendations appear instantly.'}
+      </p>
+    </header>
 
-    
-    <form class="search-form" action="/search" method="get" role="search">
-      <div class="search-input-wrap">
-        <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="11" cy="11" r="8"/>
-          <path d="m21 21-4.35-4.35"/>
-        </svg>
-        <input
-          type="search"
-          name="q"
-          class="input search-input"
-          value={q}
-          placeholder="Search movies, series, people…"
-          aria-label="Search"
-          autofocus={!q}
-        />
-        <button type="submit" class="btn btn-primary search-submit">Search</button>
-      </div>
-    </form>
+    <InstantSearch
+      client:load
+      initialQuery={q}
+      initialTab={tab}
+      initialData={initialData}
+      recommended={recommended}
+      popularQueries={POPULAR_QUERIES}
+    />
 
-    {!q ? (
-      
-      <div class="search-empty">
-        <div class="search-empty-icon" aria-hidden="true">
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-        </div>
-        <h2 class="search-empty-title">Discover something new</h2>
-        <p class="search-empty-desc">Type a movie, series, or person's name above.</p>
-
-        <div class="recent-searches" data-recent-searches hidden aria-label="Recent searches">
-          <div class="popular-searches-labelrow">
-            <p class="popular-searches-label">Recent searches</p>
-            <button type="button" class="recent-clear" data-recent-clear>Clear</button>
-          </div>
-          <div class="popular-searches-chips" data-recent-chips></div>
-        </div>
-
-        <div class="popular-searches" aria-label="Popular searches">
-          <p class="popular-searches-label">Popular searches</p>
-          <div class="popular-searches-chips">
-            {POPULAR_QUERIES.map((pq) => (
-              <a href={`/search?q=${encodeURIComponent(pq)}`} class="popular-chip">{pq}</a>
-            ))}
-          </div>
-        </div>
-      </div>
-    ) : error ? (
-      
-      <div class="search-error">
-        <p class="search-error-msg">Search failed. Please try again.</p>
-        <button class="btn btn-secondary" onclick="window.location.reload()">Retry</button>
-      </div>
-    ) : (movies.length === 0 && series.length === 0 && people.length === 0) ? (
-      
-      <div class="search-no-results">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="search-no-results-icon">
-          <circle cx="11" cy="11" r="8"/>
-          <path d="m21 21-4.35-4.35"/>
-        </svg>
-        <h2 class="search-no-results-title">No results for "{q}"</h2>
-        <p class="search-no-results-desc">Check the spelling, or try a different search term.</p>
-        <div class="popular-searches" aria-label="Try these instead">
-          <p class="popular-searches-label">Try instead</p>
-          <div class="popular-searches-chips">
-            {POPULAR_QUERIES.slice(0, 5).map((pq) => (
-              <a href={`/search?q=${encodeURIComponent(pq)}`} class="popular-chip">{pq}</a>
-            ))}
-          </div>
-        </div>
-      </div>
-    ) : (
-      <>
-        
-        <div class="search-tabs" role="tablist" aria-label="Result categories">
-          <a
-            href={tabUrl('all')}
-            class={`search-tab ${tab === 'all' ? 'search-tab--active' : ''}`}
-            role="tab"
-            aria-selected={tab === 'all'}
-          >
-            All
-          </a>
-          {movieTotal > 0 && (
-            <a
-              href={tabUrl('movies')}
-              class={`search-tab ${tab === 'movies' ? 'search-tab--active' : ''}`}
-              role="tab"
-              aria-selected={tab === 'movies'}
-            >
-              Movies <span class="search-tab-count">{movieTotal.toLocaleString()}</span>
-            </a>
-          )}
-          {seriesTotal > 0 && (
-            <a
-              href={tabUrl('series')}
-              class={`search-tab ${tab === 'series' ? 'search-tab--active' : ''}`}
-              role="tab"
-              aria-selected={tab === 'series'}
-            >
-              Series <span class="search-tab-count">{seriesTotal.toLocaleString()}</span>
-            </a>
-          )}
-          {peopleTotal > 0 && (
-            <a
-              href={tabUrl('people')}
-              class={`search-tab ${tab === 'people' ? 'search-tab--active' : ''}`}
-              role="tab"
-              aria-selected={tab === 'people'}
-            >
-              People <span class="search-tab-count">{peopleTotal.toLocaleString()}</span>
-            </a>
-          )}
-        </div>
-
-        
-        {(tab === 'all' || tab === 'movies') && movies.length > 0 && (
-          <section class="search-section" data-reveal aria-labelledby="movies-results">
-            {tab === 'all' && (
-              <div class="search-section-header">
-                <h2 class="search-section-title" id="movies-results">Movies</h2>
-                {movieTotal > movies.length && (
-                  <a href={tabUrl('movies')} class="search-section-more">
-                    See all {movieTotal.toLocaleString()} →
-                  </a>
-                )}
-              </div>
-            )}
-            <div class="poster-grid" role="list">
-              {movies.map((movie) => (
-                <div role="listitem">
-                  <PosterCard
-                    id={movie.id}
-                    title={movie.title}
-                    mediaType="movie"
-                    posterPath={movie.poster_path}
-                    backdropPath={movie.backdrop_path}
-                    releaseDate={movie.release_date}
-                    voteAverage={movie.vote_average}
-                    overview={movie.overview}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {(tab === 'all' || tab === 'series') && series.length > 0 && (
-          <section class="search-section" data-reveal aria-labelledby="series-results">
-            {tab === 'all' && (
-              <div class="search-section-header">
-                <h2 class="search-section-title" id="series-results">Series</h2>
-                {seriesTotal > series.length && (
-                  <a href={tabUrl('series')} class="search-section-more">
-                    See all {seriesTotal.toLocaleString()} →
-                  </a>
-                )}
-              </div>
-            )}
-            <div class="poster-grid" role="list">
-              {series.map((show) => (
-                <div role="listitem">
-                  <PosterCard
-                    id={show.id}
-                    title={show.name}
-                    mediaType="tv"
-                    posterPath={show.poster_path}
-                    backdropPath={show.backdrop_path}
-                    releaseDate={show.first_air_date}
-                    voteAverage={show.vote_average}
-                    overview={show.overview}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {(tab === 'all' || tab === 'people') && people.length > 0 && (
-          <section class="search-section" data-reveal aria-labelledby="people-results">
-            {tab === 'all' && (
-              <div class="search-section-header">
-                <h2 class="search-section-title" id="people-results">People</h2>
-              </div>
-            )}
-            <div class="people-grid" role="list">
-              {people.map((person) => (
-                <div class="person-card" role="listitem">
-                  <div class="person-avatar">
-                    {person.profile_path ? (
-                      <img
-                        src={`${TMDB_IMG}/w185${person.profile_path}`}
-                        alt={person.name}
-                        class="person-avatar-img"
-                        loading="lazy"
-                        width="80"
-                        height="80"
-                      />
-                    ) : (
-                      <div class="person-avatar-placeholder" aria-hidden="true">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      </div>
-                    )}
-                  </div>
-                  <div class="person-info">
-                    <span class="person-name">{person.name}</span>
-                    {person.known_for_department && (
-                      <span class="person-dept">{person.known_for_department}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </>
-    )}
+    <noscript>
+      <p class="search-noscript">
+        Instant search needs JavaScript. Browse
+        <a href="/movies">movies</a> or <a href="/series">series</a> instead.
+      </p>
+    </noscript>
   </div>
 </Layout>
-
-<script>
-  // Recent searches (localStorage). Persist the current query, render chips.
-  const KEY = 'filmora_recent_searches';
-  function read(): string[] {
-    try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
-  }
-  function write(list: string[]) {
-    try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 8))); } catch {}
-  }
-  // Save the current query if present.
-  const params = new URLSearchParams(window.location.search);
-  const q = (params.get('q') || '').trim();
-  if (q) {
-    const list = read().filter((x) => x.toLowerCase() !== q.toLowerCase());
-    list.unshift(q);
-    write(list);
-  }
-  // Render into the empty-state block if it exists.
-  const wrap = document.querySelector<HTMLElement>('[data-recent-searches]');
-  const chips = document.querySelector<HTMLElement>('[data-recent-chips]');
-  function render() {
-    const list = read();
-    if (!wrap || !chips) return;
-    if (list.length === 0) { wrap.hidden = true; return; }
-    wrap.hidden = false;
-    chips.innerHTML = list
-      .map((s) => `<a href="/search?q=${encodeURIComponent(s)}" class="popular-chip">${s.replace(/</g, '&lt;')}</a>`)
-      .join('');
-  }
-  render();
-  document.querySelector('[data-recent-clear]')?.addEventListener('click', () => {
-    write([]);
-    render();
-  });
-</script>
 
 <style>
   .search-page {
@@ -328,314 +90,46 @@ const POPULAR_QUERIES = [
     padding-bottom: 4rem;
   }
 
-  .search-header {
-    margin-bottom: 1.5rem;
+  .search-head {
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
   }
 
   .search-title {
-    font-size: var(--font-size-3xl);
-    font-weight: 700;
-    color: var(--color-text);
-    letter-spacing: var(--letter-spacing-tight);
     margin: 0;
+    font-size: 1.875rem;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: var(--letter-spacing-tight);
+    color: var(--color-text);
   }
 
-  .search-query {
+  .search-title-q {
     background: linear-gradient(135deg, var(--color-accent-from), var(--color-accent-to));
     -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
     background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 
-  .search-form {
-    margin-bottom: 2rem;
-    max-width: 680px;
-  }
-
-  .search-input-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .search-icon {
-    position: absolute;
-    left: 0.875rem;
-    color: var(--color-text-3);
-    pointer-events: none;
-  }
-
-  .search-input {
-    flex: 1;
-    padding-left: 3rem;
-    height: 48px;
-    font-size: var(--font-size-base);
-  }
-
-  .search-submit {
-    height: 48px;
-    padding: 0 1.5rem;
-    flex-shrink: 0;
-  }
-
-  /* Empty / no results */
-  .search-empty,
-  .search-no-results {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 4rem 0;
-    text-align: center;
-    gap: 0.75rem;
-  }
-
-  .search-empty-icon,
-  .search-no-results-icon {
-    color: var(--color-text-3);
-    margin-bottom: 0.5rem;
-  }
-
-  .search-empty-title,
-  .search-no-results-title {
-    font-size: var(--font-size-2xl);
-    font-weight: 600;
-    color: var(--color-text);
+  .search-sub {
     margin: 0;
-  }
-
-  .search-empty-desc,
-  .search-no-results-desc {
-    font-size: var(--font-size-base);
-    color: var(--color-text-2);
-    margin: 0;
-  }
-
-  .popular-searches {
-    margin-top: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    align-items: center;
-  }
-
-  .recent-searches {
-    margin-top: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    align-items: center;
-    width: 100%;
-  }
-  .popular-searches-labelrow {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .recent-clear {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-3);
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-decoration: underline;
-    font-family: inherit;
-  }
-  .recent-clear:hover { color: var(--color-text); }
-
-  .popular-searches-label {
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: var(--letter-spacing-wider);
-    color: var(--color-text-3);
-    margin: 0;
-  }
-
-  .popular-searches-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    justify-content: center;
-  }
-
-  .popular-chip {
-    padding: 0.375rem 0.875rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
+    max-width: 46rem;
     font-size: var(--font-size-sm);
+    line-height: 1.4;
     color: var(--color-text-2);
-    text-decoration: none;
-    transition: all var(--duration-fast) ease;
   }
 
-  .popular-chip:hover {
-    border-color: var(--color-text-3);
-    color: var(--color-text);
-    background: var(--color-surface-2);
-  }
-
-  /* Error */
-  .search-error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    padding: 3rem 0;
-    text-align: center;
-  }
-
-  .search-error-msg {
-    font-size: var(--font-size-base);
+  .search-noscript {
+    margin-top: 2rem;
     color: var(--color-text-2);
-    margin: 0;
   }
 
-  /* Tabs */
-  .search-tabs {
-    display: flex;
-    gap: 0.25rem;
-    margin-bottom: 2rem;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .search-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .search-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.625rem 1rem;
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    color: var(--color-text-2);
-    text-decoration: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: color var(--duration-fast) ease;
-    white-space: nowrap;
-  }
-
-  .search-tab:hover {
-    color: var(--color-text);
-  }
-
-  .search-tab--active {
-    color: var(--color-text);
-    border-bottom-color: var(--color-accent-from);
-  }
-
-  .search-tab-count {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-3);
-    background: var(--color-surface-2);
-    padding: 0.125rem 0.375rem;
-    border-radius: var(--radius-full);
-  }
-
-  /* Results sections */
-  .search-section {
-    margin-bottom: 3rem;
-  }
-
-  .search-section-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .search-section-title {
-    font-size: var(--font-size-xl);
-    font-weight: 600;
-    color: var(--color-text);
-    letter-spacing: var(--letter-spacing-tight);
-    margin: 0;
-  }
-
-  .search-section-more {
-    font-size: var(--font-size-sm);
-    color: var(--color-accent-from);
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .search-section-more:hover {
-    text-decoration: underline;
-  }
-
-  /* Movie grid (reuse same pattern) */
-  .poster-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 1.25rem;
-  }
-
-  @media (min-width: 640px) {
-    .poster-grid {
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    }
-  }
-
-  /* People grid */
-  .people-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 1rem;
-  }
-
-  .person-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    text-align: center;
-  }
-
-  .person-avatar {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    overflow: hidden;
-    background: var(--color-surface-2);
-    flex-shrink: 0;
-    border: 2px solid var(--color-border);
-  }
-
-  .person-avatar-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: top center;
-  }
-
-  .person-avatar-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-text-3);
-  }
-
-  .person-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .person-name {
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    color: var(--color-text);
-  }
-
-  .person-dept {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-3);
+  @media (max-width: 767px) {
+    .search-page { padding-bottom: 3rem; }
+    .search-head { margin-bottom: 0.625rem; gap: 0.125rem; }
+    .search-title { font-size: 1.375rem; }
+    .search-sub { font-size: var(--font-size-xs); }
   }
 </style>

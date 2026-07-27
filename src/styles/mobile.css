@@ -55,7 +55,6 @@
   }
 
   /* ── Footer link grid ── */
-  .footer-grid,
   footer .grid {
     grid-template-columns: repeat(3, 1fr) !important;
   }
@@ -87,9 +86,6 @@
 
   /* Poster cards */
   .poster-card { min-width: 140px; max-width: 160px; }
-
-  /* Streaming hubs — 3 col */
-  .hub-grid { grid-template-columns: repeat(3, 1fr) !important; }
 
   /* Bento grid — 2 col */
   .bento-grid { grid-template-columns: repeat(2, 1fr) !important; }
@@ -376,32 +372,22 @@
   }
 
   /* ──────────────────────────────────────────
-     FEATURED GALLERY + GALLERY SHOWCASE
+     FEATURED GALLERY
   ────────────────────────────────────────── */
-  /* FeaturedGallery ("I create; therefore I am"): fully removed on mobile.
-     The React island already returns null on phones (never mounting Three.js),
-     and hiding its .seo-block wrapper guarantees no residual whitespace or
-     layout gap on any mobile screen size. */
-  .seo-block,
-  [aria-label="Featured gallery"] {
+  /* FeaturedGallery now renders on phones as well (the island switches to a
+     lighter WebGL configuration itself — see FeaturedGallery.tsx). Only the SEO
+     text block stays hidden here; the gallery just gets smaller type. */
+  .seo-block {
     display: none !important;
   }
 
-  /* GalleryShowcase: reduce from 100vh to something sensible */
-  [aria-label="Gallery showcase"] {
-    height: 70svh !important;
-    min-height: 360px;
-    max-height: 520px;
-  }
-
-  /* Gallery headline: scale down */
-  [aria-label="Gallery showcase"] h2 {
+  [aria-label="Featured gallery"] h2 {
     font-size: clamp(1.5rem, 8vw, 2.75rem) !important;
     letter-spacing: -0.02em !important;
   }
 
-  /* Touch hint: update text */
-  [aria-label="Gallery showcase"] > div:last-child p:first-child {
+  /* Navigation hint: the desktop copy mentions scrolling; keep it small. */
+  [aria-label="Featured gallery"] > div:last-child p:first-child {
     font-size: 9px !important;
   }
 
@@ -499,7 +485,6 @@
      CINEMATIC FOOTER
   ────────────────────────────────────────── */
   /* Link grid: 2 cols on mobile */
-  .footer-grid,
   [class*="CinematicFooter"] .grid,
   footer .grid {
     grid-template-columns: repeat(2, 1fr) !important;
@@ -507,21 +492,8 @@
   }
 
   /* Section column headings */
-  footer p[class*="uppercase"],
-  .footer-col-title {
+  footer p[class*="uppercase"] {
     font-size: 0.625rem !important;
-  }
-
-  /* Footer pill bar: compact on very small screens */
-  .footer-pill {
-    padding: 0.625rem 0.875rem !important;
-  }
-  .footer-pill-brand-name { font-size: 0.875rem !important; }
-
-  /* Copyright */
-  .footer-pill-copy {
-    font-size: 0.625rem !important;
-    padding: 0 var(--mob-pad-x);
   }
 
   /* ──────────────────────────────────────────
@@ -537,10 +509,6 @@
   /* ──────────────────────────────────────────
      STREAMING HUBS (StreamingHubs)
   ────────────────────────────────────────── */
-  .hub-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 0.75rem !important;
-  }
 
   /* ──────────────────────────────────────────
      BACK TO TOP — above tab bar
@@ -552,23 +520,107 @@
   }
 
   /* ──────────────────────────────────────────
-     COOKIE CONSENT — above tab bar
+     COOKIE CONSENT — polished mobile layout
+     Sits above the bottom tab bar, full-width card with
+     stacked full-width buttons that are easy to thumb.
   ────────────────────────────────────────── */
-  [class*="cookie"],
-  [class*="Cookie"] {
-    bottom: calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 8px) !important;
+  .cookie-banner {
+    position: fixed !important;
     left: var(--mob-pad-x) !important;
     right: var(--mob-pad-x) !important;
+    bottom: calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 10px) !important;
     width: auto !important;
-    border-radius: 14px !important;
+    max-width: none !important;
+    padding: 0 !important;
+    border-top: none !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 16px !important;
+    background: rgba(10, 10, 12, 0.92) !important;
+    backdrop-filter: blur(24px) saturate(160%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+    box-shadow:
+      0 24px 60px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(255,255,255,0.03) !important;
+    /* Prevent very tall customize panel from overflowing viewport */
+    max-height: calc(100svh - var(--mob-tab-h) - env(safe-area-inset-bottom, 0px) - var(--mob-nav-h) - 2rem);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html[data-theme="light"] .cookie-banner {
+    background: rgba(255, 255, 255, 0.96) !important;
+    border-color: rgba(0,0,0,0.08) !important;
+    box-shadow:
+      0 24px 60px rgba(0,0,0,0.18),
+      0 0 0 1px rgba(0,0,0,0.03) !important;
+  }
+
+  .cookie-banner .cookie-content {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 1rem 1rem 0.875rem !important;
+    gap: 0.875rem !important;
+  }
+
+  /* Text block */
+  .cookie-banner .cookie-desc {
+    font-size: 0.8125rem !important;
+    line-height: 1.5;
+    margin: 0 0 0.5rem;
+  }
+  .cookie-banner .cookie-list {
+    font-size: 0.75rem !important;
+    padding-left: 1rem;
+    gap: 0.1875rem;
+  }
+  .cookie-banner .cookie-list li { line-height: 1.4; }
+
+  /* Actions — full-width stacked buttons */
+  .cookie-banner .cookie-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem !important;
+    width: 100%;
+  }
+  .cookie-banner .cookie-actions .btn {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: 10px;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  /* Primary "Accept all" gets its own full-width row on top */
+  .cookie-banner .cookie-actions .btn-primary {
+    grid-column: 1 / -1;
+  }
+
+  /* Customize panel */
+  .cookie-banner .cookie-customize-title {
+    font-size: 0.9375rem !important;
+    margin: 0 0 0.75rem !important;
+  }
+  .cookie-banner .cookie-toggles {
+    gap: 0.5rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+  .cookie-banner .toggle-row {
+    padding: 0.625rem 0.75rem !important;
+    gap: 0.75rem !important;
+    border-radius: 10px !important;
+  }
+  .cookie-banner .toggle-row-label { font-size: 0.8125rem !important; }
+  .cookie-banner .toggle-row-desc {
+    font-size: 0.6875rem !important;
+    line-height: 1.35;
+    margin-top: 0.125rem;
   }
 
   /* ──────────────────────────────────────────
      LOADING SCREEN
   ────────────────────────────────────────── */
-  .ls-name {
-    font-size: clamp(2.5rem, 13vw, 4.5rem) !important;
-  }
 
   /* ──────────────────────────────────────────
      GLOBAL INTERACTION IMPROVEMENTS

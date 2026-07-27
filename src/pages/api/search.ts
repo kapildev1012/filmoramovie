@@ -1,50 +1,26 @@
 // src/pages/api/search.ts — TMDB search proxy endpoint
 import type { APIRoute } from 'astro';
-import { TMDB_API_KEY } from 'astro:env/server';
+import { searchSuggestions } from '../../lib/tmdb';
 
 export const GET: APIRoute = async ({ url }) => {
   const q = url.searchParams.get('q')?.trim();
-  const page = url.searchParams.get('page') ?? '1';
 
-  if (!q || q.length < 1) {
-    return new Response(JSON.stringify({ results: [], total_results: 0, total_pages: 0 }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  const apiKey = TMDB_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'TMDB API key not configured' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
+  if (!q) {
+    return Response.json({ results: [], total_results: 0, total_pages: 0 }, {
+      headers: { 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600' },
     });
   }
 
   try {
-    const tmdbUrl = new URL('https://api.themoviedb.org/3/search/multi');
-    tmdbUrl.searchParams.set('api_key', apiKey);
-    tmdbUrl.searchParams.set('query', q);
-    tmdbUrl.searchParams.set('page', page);
-    tmdbUrl.searchParams.set('language', 'en-US');
-    tmdbUrl.searchParams.set('include_adult', 'false');
-
-    const res = await fetch(tmdbUrl.toString());
-    if (!res.ok) {
-      throw new Error(`TMDB ${res.status}`);
-    }
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=60, s-maxage=60',
-      },
+    // Typo-tolerant, popularity-ranked suggestions (Google-style "did you mean").
+    const results = await searchSuggestions(q, 8);
+    return Response.json({ results, total_results: results.length }, {
+      headers: { 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600' },
     });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: 'Search failed', results: [] }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
+  } catch {
+    return Response.json({ error: 'Search failed', results: [] }, {
+      status: 502,
+      headers: { 'Cache-Control': 'no-store' },
     });
   }
 };

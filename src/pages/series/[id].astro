@@ -2,12 +2,12 @@
 // src/pages/series/[id].astro — Series detail page
 import Layout from '../../layouts/Layout.astro';
 import HeroCarousel from '../../components/react/HeroCarousel';
+import WatchNow from '../../components/WatchNow.astro';
 import MovieRail from '../../components/MovieRail.astro';
 import { CastGallery } from '../../components/ui/gallery';
-import InfiniteGallery from '../../components/ui/3d-gallery-photography';
-import { getSeriesFull, getSeriesRecommendations, getOfficialTrailerKey, getWatchProvidersForCountry } from '../../lib/tmdb';
+import { getSeriesFull, getOfficialTrailerKey } from '../../lib/tmdb';
 import type { HeroSlide } from '../../lib/tmdb';
-import type { TMDBCastMember, TMDBProvider, TMDBSeason } from '../../lib/types';
+import type { TMDBCastMember, TMDBSeason } from '../../lib/types';
 
 const { id } = Astro.params;
 
@@ -20,6 +20,8 @@ let error: string | null = null;
 let notFound = false;
 
 try {
+  // Single TMDB request (append_to_response) — details + credits + videos +
+  // providers + recommendations. No parallel fan-out means no partial failure.
   data = await getSeriesFull(id);
 } catch (e) {
   const msg = e instanceof Error ? e.message : '';
@@ -38,19 +40,20 @@ if (!data) {
 const series         = data?.series;
 const credits        = data?.credits;
 const videos         = data?.videos;
-const watchProviders = data?.watchProviders;
 
 const trailerKey = videos ? getOfficialTrailerKey(videos) : null;
-const providers  = watchProviders ? getWatchProvidersForCountry(watchProviders) : null;
 
-// Recommendations ("More Like This") — non-fatal if it fails.
-let recommendations: Awaited<ReturnType<typeof getSeriesRecommendations>>['results'] = [];
-if (series) {
-  try {
-    const rec = await getSeriesRecommendations(series.id);
-    recommendations = rec.results.slice(0, 20);
-  } catch {}
-}
+// Recommendations ("More Like This") arrive with the detail bundle.
+const recommendations = data?.recommendations?.results.slice(0, 20) ?? [];
+
+// The first few double as the player's end-card tiles, so a finished episode
+// always offers somewhere to go next.
+const relatedForPlayer = recommendations.slice(0, 6).map((item) => ({
+  id: item.id,
+  title: item.name ?? '',
+  posterUrl: item.poster_path ? `https://image.tmdb.org/t/p/w185${item.poster_path}` : null,
+  href: `/series/${item.id}`,
+}));
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p';
 const backdropUrl = series?.backdrop_path ? `${TMDB_IMG}/w1280${series.backdrop_path}` : null;
@@ -61,29 +64,47 @@ const castPhotos = cast
   .filter((c) => c.profile_path)
   .slice(0, 5)
   .map((c) => ({ src: `https://image.tmdb.org/t/p/w185${c.profile_path}`, alt: c.name, name: c.name }));
-// Larger, higher-res set for the desktop/tablet 3D gallery
-const castGalleryImages = cast
-  .filter((c) => c.profile_path)
-  .slice(0, 12)
-  .map((c) => ({ src: `https://image.tmdb.org/t/p/w342${c.profile_path}`, alt: c.name }));
 const releaseYear = series?.first_air_date?.slice(0, 4);
 const rating = series?.vote_average ? Math.round(series.vote_average * 10) / 10 : null;
 
 // Filter out specials (season 0) from main list
 const mainSeasons = (series?.seasons ?? []).filter((s: TMDBSeason) => s.season_number > 0);
 
-// Providers deduplication
-const allProviders = [
-  ...(providers?.flatrate ?? []),
-  ...(providers?.rent ?? []),
-  ...(providers?.buy ?? []),
-  ...(providers?.free ?? []),
-  ...(providers?.ads ?? []),
-];
-const uniqueProviders = allProviders.reduce<TMDBProvider[]>((acc, p) => {
-  if (!acc.find((x) => x.provider_id === p.provider_id)) acc.push(p);
-  return acc;
-}, []);
+// Season list for the player. TMDB is NOT consistent across catalogues, and the
+// player must behave identically for every title regardless of who produced it:
+//   • most anime entries and a number of Amazon / Netflix originals expose no
+//     regular season at all — only `Specials` (season 0), or an empty array;
+//   • some report `episode_count: 0` for a season that definitely has episodes
+//     (usually a season still airing, or a co-production imported late).
+// So this narrows through progressively weaker sources and, as a last resort,
+// synthesises a single season. The result is never empty, which is what lets the
+// Watch Now section render unconditionally below.
+const seasonsWithEpisodes = mainSeasons.filter((s: TMDBSeason) => (s.episode_count ?? 0) > 0);
+const specialSeasons = (series?.seasons ?? []).filter((s: TMDBSeason) => s.season_number === 0);
+const seasonSource: TMDBSeason[] =
+  seasonsWithEpisodes.length > 0
+    ? seasonsWithEpisodes
+    : mainSeasons.length > 0
+      ? mainSeasons
+      : specialSeasons;
+
+// Minimal, serializable season list for the client-side player island.
+const playerSeasons =
+  seasonSource.length > 0
+    ? seasonSource.map((s: TMDBSeason) => ({
+        season_number: s.season_number,
+        name: s.name,
+        episode_count: s.episode_count,
+      }))
+    : [
+        {
+          season_number: 1,
+          name: series?.seasons?.[0]?.name ?? 'Season 1',
+          // 0 means "unknown" to the island, which then trusts the episode list
+          // it fetches instead of this count.
+          episode_count: series?.number_of_episodes ?? 0,
+        },
+      ];
 
 // Build a single cinematic hero slide so the detail page opens with the
 // exact same HeroCarousel used on the /series browse page.
@@ -104,17 +125,36 @@ const heroSlide: HeroSlide | null = series
           : series.number_of_seasons
             ? `${series.number_of_seasons} Season${series.number_of_seasons > 1 ? 's' : ''}`
             : null,
-      href: trailerKey ? '#trailer' : '#watch-heading',
+      href: trailerKey ? '#trailer' : '#watch',
     }
   : null;
+
+// Landscape backdrops (this title + recommendations) for the shared gallery.
+const galleryImages: string[] = [
+  ...(series?.backdrop_path ? [series.backdrop_path] : []),
+  ...recommendations.map((r) => r.backdrop_path),
+]
+  .filter(Boolean)
+  .slice(0, 12)
+  .map((p) => `${TMDB_IMG}/w780${p}`);
 ---
 
 <Layout
   title={series ? `${series.name}${releaseYear ? ` (${releaseYear})` : ''}` : 'Series'}
   description={series?.overview || series?.tagline || 'Series details'}
   image={backdropUrl ?? posterUrl}
+  galleryImages={galleryImages}
 >
-  {error ? (
+  <Fragment slot="head">
+    {/* Identical to the movie page — same providers, same hints, so playback
+         start-up cost does not depend on whether the title is a film or a show. */}
+    <link rel="dns-prefetch" href="https://www.vidking.net" />
+    <link rel="dns-prefetch" href="https://vidlink.pro" />
+    <link rel="dns-prefetch" href="https://player.videasy.net" />
+    <link rel="dns-prefetch" href="https://vidfast.pro" />
+    <link rel="dns-prefetch" href="https://api.codespecters.com" />
+  </Fragment>
+  {error || !series ? (
     <div class="detail-error container">
       <h1>Failed to load</h1>
       <p>{error}</p>
@@ -128,49 +168,24 @@ const heroSlide: HeroSlide | null = series
       )}
 
       <div class="detail-body container">
-        {/* ── Where to Watch ── */}
-        <section class="detail-section" data-reveal aria-labelledby="watch-heading">
-          <h2 class="detail-section-title" id="watch-heading">Where to Watch</h2>
-          {uniqueProviders.length > 0 ? (
-            <div class="providers-grid">
-              {providers?.flatrate && providers.flatrate.length > 0 && (
-                <div class="provider-group">
-                  <h3 class="provider-group-title">Stream</h3>
-                  <div class="provider-logos">
-                    {providers.flatrate.map((p) => (
-                      <a href={providers!.link} target="_blank" rel="noopener noreferrer" class="provider-logo-link" aria-label={`Watch on ${p.provider_name}`} title={p.provider_name}>
-                        <img src={`https://image.tmdb.org/t/p/w92${p.logo_path}`} alt={p.provider_name} class="provider-logo" width="44" height="44" loading="lazy" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {providers?.rent && providers.rent.length > 0 && (
-                <div class="provider-group">
-                  <h3 class="provider-group-title">Rent</h3>
-                  <div class="provider-logos">
-                    {providers.rent.map((p) => (
-                      <a href={providers!.link} target="_blank" rel="noopener noreferrer" class="provider-logo-link" aria-label={`Rent on ${p.provider_name}`} title={p.provider_name}>
-                        <img src={`https://image.tmdb.org/t/p/w92${p.logo_path}`} alt={p.provider_name} class="provider-logo" width="44" height="44" loading="lazy" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div class="providers-empty">
-              <p>No streaming providers found for your region (IN). Check on
-                <a href={`https://www.themoviedb.org/tv/${series.id}/watch`} target="_blank" rel="noopener noreferrer" class="providers-tmdb-link">TMDB</a>.
-              </p>
-            </div>
-          )}
-          <p class="providers-attribution">Watch provider data by <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a> via TMDB.</p>
-        </section>
+        {/* ── Watch (shared player section) ──
+             Rendered unconditionally: `playerSeasons` is guaranteed non-empty
+             above, so a series with no season data on TMDB still gets the same
+             player and can still play S1E1 through any server. */}
+        <WatchNow
+          mediaType="tv"
+          id={series.id}
+          title={series.name}
+          backdropUrl={backdropUrl ?? posterUrl}
+          posterUrl={posterUrl}
+          seasons={playerSeasons}
+          trailerKey={trailerKey}
+          related={relatedForPlayer}
+        />
 
         {/* ── Trailer ── */}
         {trailerKey && (
-          <section class="detail-section" id="trailer" data-reveal aria-labelledby="trailer-heading">
+          <section class="detail-section detail-hide-mobile" id="trailer" data-reveal aria-labelledby="trailer-heading">
             <h2 class="detail-section-title" id="trailer-heading">Trailer</h2>
             <div class="trailer-wrap">
               <iframe
@@ -258,25 +273,11 @@ const heroSlide: HeroSlide | null = series
 
         {/* ── Cast ── */}
         {cast.length > 0 && (
-          <section class="detail-section" data-reveal aria-labelledby="cast-heading">
+          <section class="detail-section detail-hide-mobile" data-reveal aria-labelledby="cast-heading">
             <h2 class="detail-section-title" id="cast-heading">Cast</h2>
             {castPhotos.length > 0 && (
               <div class="cast-gallery-mobile">
                 <CastGallery client:visible photos={castPhotos} />
-              </div>
-            )}
-            {castGalleryImages.length > 0 && (
-              <div class="cast-gallery-desktop">
-                <InfiniteGallery
-                  client:visible
-                  images={castGalleryImages}
-                  speed={1.2}
-                  zSpacing={3}
-                  visibleCount={12}
-                  falloff={{ near: 0.8, far: 14 }}
-                  className="cast-3d-canvas"
-                />
-                <p class="cast-3d-hint">Scroll, use arrow keys, or drag to explore the cast</p>
               </div>
             )}
             <div class="cast-grid" role="list">
@@ -300,6 +301,93 @@ const heroSlide: HeroSlide | null = series
             </div>
           </section>
         )}
+
+        {/* ── Details ──
+             Mirrors the movie page's Details block so both detail routes have the
+             same section order: Watch Now → Seasons → Trailer → Cast → Details →
+             More Like This. Series-specific facts (network, creators, air-date
+             range, episode counts) replace the film-only ones (budget, revenue).
+             Not marked `detail-hide-mobile`: this is plain text, cheap to render,
+             and it is the only place a phone viewer can see network / status. */}
+        <section class="detail-section" data-reveal aria-labelledby="details-heading">
+          <h2 class="detail-section-title" id="details-heading">Details</h2>
+          <dl class="detail-facts">
+            {series.status && (
+              <>
+                <dt>Status</dt>
+                <dd>{series.status}{series.in_production ? ' · In production' : ''}</dd>
+              </>
+            )}
+            {series.type && (
+              <>
+                <dt>Type</dt>
+                <dd>{series.type}</dd>
+              </>
+            )}
+            {series.created_by?.length > 0 && (
+              <>
+                <dt>Created by</dt>
+                <dd>{series.created_by.map((c) => c.name).join(', ')}</dd>
+              </>
+            )}
+            {series.networks?.length > 0 && (
+              <>
+                <dt>Network</dt>
+                <dd>{series.networks.map((n) => n.name).join(', ')}</dd>
+              </>
+            )}
+            {series.first_air_date && (
+              <>
+                <dt>Aired</dt>
+                <dd>
+                  {series.first_air_date}
+                  {series.last_air_date && series.last_air_date !== series.first_air_date
+                    ? ` — ${series.last_air_date}`
+                    : ''}
+                </dd>
+              </>
+            )}
+            {series.number_of_seasons > 0 && (
+              <>
+                <dt>Episodes</dt>
+                <dd>
+                  {series.number_of_seasons} season{series.number_of_seasons > 1 ? 's' : ''}
+                  {series.number_of_episodes > 0 ? ` · ${series.number_of_episodes} episodes` : ''}
+                </dd>
+              </>
+            )}
+            {series.episode_run_time?.[0] && series.episode_run_time[0] > 0 && (
+              <>
+                <dt>Episode length</dt>
+                <dd>{series.episode_run_time[0]}m</dd>
+              </>
+            )}
+            {series.original_name && series.original_name !== series.name && (
+              <>
+                <dt>Original title</dt>
+                <dd>{series.original_name}</dd>
+              </>
+            )}
+            {series.spoken_languages?.length > 0 && (
+              <>
+                <dt>Languages</dt>
+                <dd>{series.spoken_languages.map((l) => l.english_name).join(', ')}</dd>
+              </>
+            )}
+            {series.origin_country?.length > 0 && (
+              <>
+                <dt>Country</dt>
+                <dd>{series.origin_country.join(', ')}</dd>
+              </>
+            )}
+            {series.production_companies?.length > 0 && (
+              <>
+                <dt>Production</dt>
+                <dd>{series.production_companies.map((c) => c.name).join(', ')}</dd>
+              </>
+            )}
+          </dl>
+        </section>
       </div>
 
       {recommendations.length > 0 && (
@@ -357,18 +445,23 @@ const heroSlide: HeroSlide | null = series
 
   .detail-body { padding-top: 3rem; padding-bottom: 4rem; }
   .detail-section { margin-bottom: 3rem; }
-  .detail-section-title { font-size: var(--font-size-xl); font-weight: 600; color: var(--color-text); letter-spacing: var(--letter-spacing-tight); margin: 0 0 1.25rem; }
 
-  /* Providers */
-  .providers-grid { display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 0.75rem; }
-  .provider-group-title { font-size: var(--font-size-xs); font-weight: 600; text-transform: uppercase; letter-spacing: var(--letter-spacing-wider); color: var(--color-text-3); margin: 0 0 0.75rem; }
-  .provider-logos { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-  .provider-logo-link { display: block; border-radius: var(--radius-md); overflow: hidden; transition: transform var(--duration-fast) ease; border: 1px solid var(--color-border); }
-  .provider-logo-link:hover { transform: scale(1.05); }
-  .provider-logo { width: 52px; height: 52px; object-fit: cover; display: block; }
-  .providers-empty { padding: 1.5rem; border: 1px dashed var(--color-border); border-radius: var(--radius-md); text-align: center; font-size: var(--font-size-sm); color: var(--color-text-3); }
-  .providers-tmdb-link, .providers-attribution a { color: var(--color-accent-from); text-decoration: none; }
-  .providers-attribution { font-size: var(--font-size-xs); color: var(--color-text-3); margin-top: 0.5rem; }
+  /* Details fact list — same two-column definition grid as the movie page.
+     mobile.css stacks label above value below 768px. */
+  .detail-facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1.5rem;
+    margin: 0;
+    font-size: var(--font-size-sm);
+  }
+  .detail-facts dt { color: var(--color-text-3); font-weight: 500; white-space: nowrap; }
+  .detail-facts dd { color: var(--color-text-2); margin: 0; }
+  /* Hide Trailer and Cast sections on mobile (<768px). */
+  @media (max-width: 767px) {
+    .detail-hide-mobile { display: none !important; }
+  }
+  .detail-section-title { font-size: var(--font-size-xl); font-weight: 600; color: var(--color-text); letter-spacing: var(--letter-spacing-tight); margin: 0 0 1.25rem; }
 
   /* Trailer — full screen height, 16:9 width, centred */
   .trailer-wrap {
@@ -424,7 +517,7 @@ const heroSlide: HeroSlide | null = series
   @media (min-width: 768px) {
     .cast-gallery-desktop { display: block; }
   }
-  /* Sized as large as the homepage FeaturedGallery + GalleryShowcase (taller showcase). */
+  /* Sized to match the homepage FeaturedGallery section height. */
   .cast-3d-canvas { width: 100%; height: clamp(360px, 70svh, 100svh); border-radius: var(--radius-lg, 14px); overflow: hidden; background: var(--color-surface-2); }
   .cast-3d-hint { text-align: center; font-size: var(--font-size-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-3); margin: 0.75rem 0 0; }
   .cast-grid { display: none !important; }

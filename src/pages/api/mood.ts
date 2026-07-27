@@ -181,18 +181,18 @@ export const POST: APIRoute = async ({ request }) => {
             model: workerEnv.NEXS_MODEL || 'GPT 4.1 mini',
             store: false,
             temperature: 0.35,
-            max_completion_tokens: 420,
+            max_completion_tokens: 700,
             response_format: { type: 'json_object' },
             metadata: { feature: 'mobile_mood_match' },
             messages: [
               {
                 role: 'system',
-                content: 'You are a concise movie curator. Select only IDs supplied by the user. Return valid JSON with headline, summary, and picks. picks must be an array of exactly 3 objects shaped {"id": number, "why": string}. Keep every why under 90 characters. Never invent titles or IDs.',
+                content: 'You are a concise movie curator. Select only IDs supplied by the user. Return valid JSON with headline, summary, and picks. picks must be an array of exactly 6 objects shaped {"id": number, "why": string}. Keep every why under 90 characters. Never invent titles or IDs.',
               },
               {
                 role: 'user',
                 content: JSON.stringify({
-                  task: 'Choose three films matching this mood and available-time preference.',
+                  task: 'Choose six films matching this mood and available-time preference.',
                   mood: moodConfig.label,
                   maximumMinutes: minutes,
                   candidates: candidateContext,
@@ -218,7 +218,7 @@ export const POST: APIRoute = async ({ request }) => {
           if (typeof id !== 'number' || !candidateIds.has(id) || selectedIds.includes(id)) continue;
           selectedIds.push(id);
           reasons.set(id, cleanText(why, moodConfig.fallback, 90));
-          if (selectedIds.length === 3) break;
+          if (selectedIds.length === 6) break;
         }
 
         if (selectedIds.length > 0) {
@@ -234,12 +234,12 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     for (const candidate of candidates) {
-      if (selectedIds.length >= 3) break;
+      if (selectedIds.length >= 6) break;
       if (!selectedIds.includes(candidate.id)) selectedIds.push(candidate.id);
     }
 
     const byId = new Map(candidates.map((item) => [item.id, item]));
-    const picks = selectedIds.slice(0, 3).flatMap((id) => {
+    const picks = selectedIds.slice(0, 6).flatMap((id) => {
       const item = byId.get(id);
       if (!item) return [];
       return [{

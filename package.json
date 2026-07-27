@@ -7,11 +7,13 @@
   },
   "scripts": {
     "dev": "astro dev",
+    "dev:nohmr": "NO_HMR=1 astro dev",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
+    "@ark-ui/react": "^5.37.2",
     "@astrojs/cloudflare": "^14.1.4",
     "@astrojs/react": "^6.0.1",
     "@react-three/drei": "^10.7.7",
@@ -22,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "framer-motion": "^12.42.2",
     "gsap": "^3.15.0",
+    "hls.js": "1.6.16",
     "lucia": "^3.2.2",
     "lucide-react": "^1.25.0",
     "motion": "^12.42.2",

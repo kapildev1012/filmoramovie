@@ -6,10 +6,9 @@ import Top10Rail from '../components/Top10Rail.astro';
 import HeroCarousel from '../components/react/HeroCarousel';
 import ContinueWatchingRail from '../components/react/ContinueWatchingRail';
 import MoodMatch from '../components/react/MoodMatch';
-import CookieConsent from '../components/react/CookieConsent';
 import Testimonials from '../components/react/Testimonials';
+import CinematicGallery from '../components/CinematicGallery.astro';
 import FeaturedGallery from '../components/react/FeaturedGallery';
-import GalleryShowcase from '../components/react/GalleryShowcase';
 import { getHomePageData, getAllPlatformTop10 } from '../lib/tmdb';
 
 let data: Awaited<ReturnType<typeof getHomePageData>> | null = null;
@@ -32,32 +31,15 @@ const trending     = take(data?.trending.results, 20);
 const nowPlaying   = take(data?.nowPlaying.results, 20);
 const onAir        = take(data?.onAir.results, 20);
 const topRated     = take(data?.topRatedMovies.results, 20);
-const action       = take(data?.action.results, 20);
-const comedy       = take(data?.comedy.results, 20);
-const horror       = take(data?.horror.results, 20);
-const scifi        = take(data?.scifi.results, 20);
-const drama        = take(data?.drama.results, 20);
-const anime        = take(data?.anime.results, 20);
-const netflix      = take(data?.netflix.results, 20);
-const disney       = take(data?.disney.results, 20);
-const marvel       = take(data?.marvel.results, 20);
 const recommended  = take(data?.popularMovies.results, 20);
 const recentlyAdded= take(data?.upcoming.results, 20);
 
 const netflixTop10 = platformTop10?.netflixTop10 ?? [];
 const primeTop10   = platformTop10?.primeTop10   ?? [];
-const disneyTop10  = platformTop10?.disneyTop10  ?? [];
 const hotstarTop10 = platformTop10?.hotstarTop10 ?? [];
 const appletvTop10 = platformTop10?.appletvTop10 ?? [];
 
-// Poster URLs for the parallax floating hero (from trending + top10 fallback)
-const heroPosters: string[] = [...trending, ...netflixTop10, ...topRated]
-  .map((i: any) => i?.poster_path)
-  .filter(Boolean)
-  .slice(0, 8)
-  .map((p: string) => `https://image.tmdb.org/t/p/w342${p}`);
-
-// Landscape backdrops for the 3D infinite gallery under the hero
+// Landscape backdrops for the lightweight cinematic gallery.
 const galleryImages: string[] = [...trending, ...netflixTop10, ...topRated, ...nowPlaying]
   .map((i: any) => i?.backdrop_path)
   .filter(Boolean)
@@ -111,7 +93,6 @@ const hasContent = heroAll.length > 0 || trending.length > 0;
       ]
     })}</script>
   </Fragment>
-  <CookieConsent client:idle slot="cookie-banner" />
 
   {(error || !hasContent) && (
     <div class="home-notice container" role="status">
@@ -136,8 +117,15 @@ const hasContent = heroAll.length > 0 || trending.length > 0;
         {/* ── Continue Watching (renders only when the user has saved items) ── */}
         <div data-reveal>
           <ContinueWatchingRail client:idle title="Continue Watching" />
-          {/* Custom Add-on Features — mobile-only AI mood + time matching. */}
-          <MoodMatch client:only="react" />
+          {/* Custom Add-on Features — AI mood + time matching (all viewports).
+              client:visible rather than client:only: every client:only island in
+              a page makes Astro's view-transition router reload the whole target
+              page in a hidden iframe before it can swap. This component reads
+              window/localStorage only inside effects, so it server-renders
+              safely. */}
+          <div class="mood-block">
+            <MoodMatch client:visible />
+          </div>
         </div>
 
         {trending.length > 0 && (
@@ -204,16 +192,17 @@ const hasContent = heroAll.length > 0 || trending.length > 0;
           </div>
         )}
 
-        {/* ── SEO Content Block ── */}
-        <div class="seo-block">
+        {/* ── Galleries ──
+             FeaturedGallery (WebGL) comes first, then the zero-JavaScript
+             CinematicGallery. GalleryShowcase was removed: it was a second
+             Three.js canvas showing the same demo stills.
 
-          {/* 3D infinite gallery — falls back to built-in Unsplash images when TMDB data is unavailable */}
-          <FeaturedGallery client:only="react" images={galleryImages} />
-
-        </div>
-
-        {/* ── Gallery Showcase ── */}
-        <GalleryShowcase client:only="react" />
+             client:visible, not client:only: client:only made the view-transition
+             router reload the whole target page in a hidden iframe on every
+             navigation, and it pulled the ~870 kB three.js bundle onto the
+             critical path of every page load. */}
+        <FeaturedGallery client:visible={{ rootMargin: '400px' }} images={galleryImages} />
+        <CinematicGallery images={galleryImages} />
 
         {/* ── Testimonials ── */}
         <Testimonials client:visible />
@@ -353,6 +342,17 @@ const hasContent = heroAll.length > 0 || trending.length > 0;
 </Layout>
 
 <style>
+  /* Breathing room between the Continue Watching rail and the mood matcher —
+     they share one reveal wrapper, so the .home-sections gap doesn't apply,
+     and the rail itself sets margin-bottom: 0. */
+  .mood-block { margin-top: 2.75rem; }
+  @media (min-width: 768px) {
+    .mood-block { margin-top: 3.5rem; }
+  }
+  @media (min-width: 1024px) {
+    .mood-block { margin-top: 4.5rem; }
+  }
+
   .home-error { min-height: 60vh; display: flex; align-items: center; justify-content: center; padding: 4rem 0; }
   .home-error-inner { text-align: center; max-width: 480px; }
   .home-error-icon { color: var(--color-text-3); margin-bottom: 1.5rem; }

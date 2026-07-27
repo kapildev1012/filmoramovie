@@ -69,6 +69,9 @@ const TABS: Tab[] = [
   { href: "/profile",  label: "Profile", icon: <IconProfile />,   iconActive: <IconProfile filled />,   match: (p) => p.startsWith("/profile") || p.startsWith("/login") },
 ];
 
+/** Tabs whose HTML the edge caches (see PUBLIC_PAGE in src/middleware.ts). */
+const PREFETCHABLE = new Set(["/", "/movies", "/search"]);
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function BottomTabBar() {
@@ -77,9 +80,21 @@ export default function BottomTabBar() {
 
   useEffect(() => {
     setPathname(window.location.pathname);
-    const handler = () => setPathname(window.location.pathname);
-    document.addEventListener("astro:page-load", handler);
-    return () => document.removeEventListener("astro:page-load", handler);
+    // Move the active tab when the navigation *starts*, not when it finishes —
+    // astro:page-load only fires after the new document is fetched and swapped,
+    // which left the tap feeling unacknowledged. page-load then confirms it and
+    // covers back/forward navigation.
+    const onStart = (e: Event) => {
+      const to = (e as CustomEvent & { to?: URL }).to;
+      if (to?.pathname) setPathname(to.pathname);
+    };
+    const onDone = () => setPathname(window.location.pathname);
+    document.addEventListener("astro:before-preparation", onStart);
+    document.addEventListener("astro:page-load", onDone);
+    return () => {
+      document.removeEventListener("astro:before-preparation", onStart);
+      document.removeEventListener("astro:page-load", onDone);
+    };
   }, []);
 
   useEffect(() => {
@@ -103,6 +118,14 @@ export default function BottomTabBar() {
             <a
               key={tab.href}
               href={tab.href}
+              /* This is the primary navigation on phones, where the global
+                 "hover" prefetch strategy can never fire, and the bar is fixed
+                 to the bottom of the viewport — so "viewport" warms these routes
+                 shortly after load and a tap swaps cached HTML.
+                 Limited to the public catalog routes: /watchlist and /profile
+                 are per-user, so the middleware never edge-caches them and a
+                 prefetch would just burn an SSR render plus a D1 query. */
+              data-astro-prefetch={PREFETCHABLE.has(tab.href) ? "viewport" : "false"}
               className={`btb-tab${active ? " btb-tab--active" : ""}`}
               aria-label={tab.label}
               aria-current={active ? "page" : undefined}
@@ -147,6 +170,7 @@ export default function BottomTabBar() {
             z-index: 110;
             align-items: center;
             justify-content: space-around;
+            animation: btb-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
           }
 
           html[data-theme="light"] .btb-root {
@@ -158,6 +182,7 @@ export default function BottomTabBar() {
           /* ── Each tab ── */
           .btb-tab {
             position: relative;
+            z-index: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -189,6 +214,10 @@ export default function BottomTabBar() {
             width: 26px;
             height: 26px;
             z-index: 1;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+          }
+          .btb-tab--active .btb-icon {
+            transform: translateY(-2px) scale(1.08);
           }
 
           /* Watchlist badge */
@@ -217,6 +246,13 @@ export default function BottomTabBar() {
             line-height: 1;
             white-space: nowrap;
             z-index: 1;
+            opacity: 0.9;
+            transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), font-weight 0.2s ease;
+          }
+          .btb-tab--active .btb-label {
+            opacity: 1;
+            font-weight: 700;
+            transform: translateY(-1px);
           }
         }
 
@@ -226,9 +262,21 @@ export default function BottomTabBar() {
           .btb-icon  { width: 22px; height: 22px; }
         }
 
-        /* Reduced motion */
+        /* Entrance — bar rises into place on first mount */
+        @keyframes btb-rise {
+          from { opacity: 0; transform: translateX(-50%) translateY(24px); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* Reduced motion — kill movement, keep instant state changes */
         @media (prefers-reduced-motion: reduce) {
+          .btb-root { animation: none; }
           .btb-tab { transition: color 0s; }
+          .btb-tab:active { transform: none; }
+          .btb-icon,
+          .btb-label { transition: none; }
+          .btb-tab--active .btb-icon { transform: none; }
+          .btb-tab--active .btb-label { transform: none; }
         }
       `}</style>
     </>

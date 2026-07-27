@@ -94,7 +94,7 @@ const top10 = items.slice(0, 10);
     if (viewport._t10Init) return;
     viewport._t10Init = true;
 
-    const track = viewport.querySelector<HTMLElement>('[data-t10-track]');
+    const track = viewport.querySelector<HTMLElement>('[data-t10-track]')!;
     if (!track) return;
 
     const originalItems = Array.from(track.children) as HTMLElement[];

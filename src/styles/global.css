@@ -20,6 +20,13 @@
   --color-accent-from: #4285F4;
   --color-accent-to:   #A142F4;
 
+  /* Netflix player chrome: signature red + the greys Netflix uses for its
+     secondary buttons. Player-only, so the site accent stays blue→purple. */
+  --color-nf-red:      #e50914;
+  --color-nf-red-dark: #b20710;
+  --color-nf-btn:      rgba(42, 42, 42, 0.85);
+  --color-nf-btn-hover:rgba(72, 72, 72, 0.9);
+
   /* shadcn-style aliases (used by imported components like CinematicFooter) */
   --background:        var(--color-bg);
   --foreground:        var(--color-text);
@@ -175,63 +182,7 @@ html[data-theme="light"] {
 
 /* ── Body & page background ── */
 html[data-theme="light"] body { background-color: var(--color-bg); color: var(--color-text); }
-
-/* ── Nav pill ── */
-html[data-theme="light"] .nav-pill {
-  background: rgba(255,255,255,0.88);
-  border-color: rgba(0,0,0,0.1);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
-}
-html[data-theme="light"] .nav-link { color: rgba(0,0,0,0.65); }
-html[data-theme="light"] .nav-link:hover { color: #000; background: rgba(0,0,0,0.07); }
-html[data-theme="light"] .nav-link--active { color: #000; background: rgba(0,0,0,0.09); }
-html[data-theme="light"] .nav-logo-text { color: #18181b; }
-html[data-theme="light"] .nav-icon-btn { color: rgba(0,0,0,0.6); }
-html[data-theme="light"] .nav-icon-btn:hover { background: rgba(0,0,0,0.07); color: #000; }
-html[data-theme="light"] .nav-9dot-btn { color: rgba(0,0,0,0.6); }
-
-/* ── Nav dropdowns ── */
-html[data-theme="light"] .nav-dd-panel,
-html[data-theme="light"] .nav-platforms-panel {
-  background: rgba(255,255,255,0.97);
-  border-color: rgba(0,0,0,0.1);
-  box-shadow: 0 16px 48px rgba(0,0,0,0.15);
-}
-html[data-theme="light"] .nav-dd-item { color: rgba(0,0,0,0.8); }
-html[data-theme="light"] .nav-dd-item:hover { background: rgba(0,0,0,0.06); color: #000; }
-html[data-theme="light"] .nav-dd-head { color: rgba(0,0,0,0.45); }
-html[data-theme="light"] .nav-dd-sep { background: rgba(0,0,0,0.08); }
-html[data-theme="light"] .nav-profile-name { color: #18181b; }
-html[data-theme="light"] .nav-search-input { background: rgba(0,0,0,0.07); color: #18181b; border-color: rgba(0,0,0,0.14); }
-html[data-theme="light"] .nav-search-input::placeholder { color: rgba(0,0,0,0.4); }
-
-/* ── Platforms panel ── */
-html[data-theme="light"] .npp-head { border-bottom-color: rgba(0,0,0,0.08); }
-html[data-theme="light"] .npp-heading { color: rgba(0,0,0,0.5); }
-html[data-theme="light"] .npp-sub { color: rgba(0,0,0,0.35); }
-html[data-theme="light"] .npp-tile { background: #f0f0f2; border-color: rgba(0,0,0,0.08); }
-html[data-theme="light"] .npp-tile:hover { background: #e8e8eb; }
-html[data-theme="light"] .npp-badge { background: #e0e0e4; border-color: rgba(0,0,0,0.12); color: rgba(0,0,0,0.6); }
-
-/* ── Mobile bar & overlay ── */
-html[data-theme="light"] .mobile-bar {
-  background: rgba(255,255,255,0.88);
-  border-color: rgba(0,0,0,0.1);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-}
-html[data-theme="light"] .mobile-logo-text { color: #18181b; }
-html[data-theme="light"] .mobile-hamburger { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.12); color: rgba(0,0,0,0.7); }
 html[data-theme="light"] .mobile-overlay { background: #f4f4f5; }
-html[data-theme="light"] .mob-brand-name { color: #18181b; }
-html[data-theme="light"] .mob-brand-role { color: rgba(0,0,0,0.45); }
-html[data-theme="light"] .mob-nav-label { color: rgba(0,0,0,0.8); }
-html[data-theme="light"] .mob-nav-num { color: rgba(0,0,0,0.3); }
-html[data-theme="light"] .mob-nav-link { border-bottom-color: rgba(0,0,0,0.08); }
-html[data-theme="light"] .mob-footer-tagline { color: rgba(0,0,0,0.5); }
-html[data-theme="light"] .mob-footer-email { color: rgba(0,0,0,0.55); }
-html[data-theme="light"] .mob-divider { background: rgba(0,0,0,0.08); }
-html[data-theme="light"] .mob-close-btn { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.1); color: rgba(0,0,0,0.7); }
-html[data-theme="light"] .mob-social-chip { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); color: rgba(0,0,0,0.5); }
 
 /* ── Rail titles & view-all ── */
 html[data-theme="light"] .rail-title { color: #18181b; }
@@ -258,14 +209,6 @@ html[data-theme="light"] .t10-card { background: #e4e4e7; }
 html[data-theme="light"] .t10-title { color: #18181b; }
 html[data-theme="light"] .t10-view-all { color: rgba(0,0,0,0.4); }
 html[data-theme="light"] .t10-view-all:hover { color: #000; }
-
-/* ── StreamingHubs ── */
-html[data-theme="light"] .hub-card { background: #ffffff; border-color: rgba(0,0,0,0.08); }
-html[data-theme="light"] .hub-name { color: #18181b; }
-html[data-theme="light"] .hub-tag { color: #71717a; }
-html[data-theme="light"] .hub-arrow { color: #71717a; }
-html[data-theme="light"] .hub-card:hover { box-shadow: 0 16px 40px rgba(0,0,0,0.12); }
-html[data-theme="light"] .hub-count-badge { color: rgba(0,0,0,0.4); background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
 
 /* ── Footer ── */
 html[data-theme="light"] footer,
@@ -588,125 +531,6 @@ html[data-theme="light"] body::before {
    LOADING SCREEN — CSS classes used by LoadingScreen.tsx
 ═══════════════════════════════════════════════════════════ */
 
-/* Glowing orbs behind the loading doors */
-.ls-orb {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: blur(80px);
-  opacity: 0;
-  animation: ls-orb-in 1.2s ease forwards;
-}
-.ls-orb-1 {
-  width: 500px; height: 500px;
-  background: radial-gradient(circle, rgba(99,102,241,0.35) 0%, transparent 70%);
-  top: -80px; right: -100px;
-  animation-delay: 0.1s;
-}
-.ls-orb-2 {
-  width: 600px; height: 600px;
-  background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 70%);
-  bottom: -120px; left: -120px;
-  animation-delay: 0.25s;
-}
-.ls-orb-3 {
-  width: 350px; height: 350px;
-  background: radial-gradient(circle, rgba(217,70,239,0.18) 0%, transparent 70%);
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  filter: blur(120px);
-  animation-delay: 0.4s;
-}
-@keyframes ls-orb-in {
-  from { opacity: 0; transform: scale(0.8); }
-  to   { opacity: 1; transform: scale(1);   }
-}
-
-/* Grain noise texture */
-.ls-grain {
-  position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
-  opacity: 0.025;
-  pointer-events: none;
-}
-
-/* Eyebrow text */
-.ls-eyebrow {
-  font-family: var(--font-sans);
-  font-size: clamp(0.875rem, 2vw, 1.25rem);
-  font-weight: 300;
-  letter-spacing: 0.12em;
-  color: rgba(255,255,255,0.55);
-  margin: 0;
-  position: relative;
-  z-index: 2;
-}
-
-/* Giant scramble name */
-.ls-name {
-  font-family: var(--font-sans);
-  font-size: clamp(3.5rem, 12vw, 9rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7, #d946ef);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  position: relative;
-  z-index: 2;
-  margin: 0;
-}
-
-.ls-name-char {
-  display: inline-block;
-  opacity: 0;
-  transform: translateY(20px);
-  animation: ls-char-in 0.5s ease forwards;
-}
-@keyframes ls-char-in {
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Role scramble */
-.ls-role {
-  font-family: var(--font-sans);
-  font-size: clamp(0.6875rem, 1.5vw, 0.9375rem);
-  font-weight: 500;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.35);
-  display: flex;
-  position: relative;
-  z-index: 2;
-  margin: 0;
-}
-
-.ls-role-char {
-  display: inline-block;
-  min-width: 0.55em;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Pulsing status dot */
-.ls-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: #8b5cf6;
-  box-shadow: 0 0 8px rgba(139,92,246,0.8);
-  animation: ls-dot-pulse 1.2s ease infinite;
-  flex-shrink: 0;
-}
-@keyframes ls-dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1);   }
-  50%       { opacity: 0.4; transform: scale(0.7); }
-}
-
 /* ═══════════════════════════════════════════════════════════
    GRADIENT UTILITIES (used across the site)
 ═══════════════════════════════════════════════════════════ */
@@ -859,58 +683,6 @@ html[data-theme="light"] body::before {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   KINETIC TYPOGRAPHY LOADER (loading-animation.tsx)
-═══════════════════════════════════════════════════════════ */
-.loader-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  perspective: 1000px;
-}
-.loader-container h1 {
-  transform-style: preserve-3d;
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-.char {
-  display: inline-block;
-  opacity: 0;
-  animation-duration: 0.9s;
-  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
-  animation-fill-mode: both;
-  will-change: transform, opacity;
-  transform-style: preserve-3d;
-}
-
-@keyframes fly-in {
-  from {
-    opacity: 0;
-    transform: var(--transform-from);
-  }
-  to {
-    opacity: 1;
-    transform: translateZ(0) rotateX(0) rotateY(0);
-  }
-}
-
-@keyframes fly-out {
-  from {
-    opacity: 1;
-    transform: translateZ(0) rotateX(0) rotateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: var(--transform-to);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .char { animation: none !important; opacity: 1 !important; transform: none !important; }
-}
-
-/* ═══════════════════════════════════════════════════════════
    HIGH CONTRAST SUPPORT
 ═══════════════════════════════════════════════════════════ */
 @media (prefers-contrast: more) {
@@ -920,7 +692,6 @@ html[data-theme="light"] body::before {
     --color-border: #4a4a4a;
   }
   .chip, .badge { border-color: rgba(255,255,255,0.4); color: #fff; }
-  .nav-link { color: rgba(255,255,255,0.85); }
   :focus-visible { outline-width: 3px; }
 }
 
@@ -980,4 +751,23 @@ body {
   flex-direction: column;
   gap: var(--section-gap);
   padding-top: 0.5rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+   NETFLIX-STYLE PLAYER CHROME — server bar, controls, ep-nav
+══════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════
+   PLAYER STAGE — gestures (brightness / volume), zoom, HUD
+   See src/components/react/PlayerStage.tsx
+══════════════════════════════════════════════════════════ */
+
+.nf-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (max-width: 640px) {
+  .nf-actions { justify-content: flex-end; }
 }

@@ -6,7 +6,14 @@ import CinematicFooter from '../components/react/CinematicFooter';
 import HumanGate from '../components/HumanGate.astro';
 import BackToTop from '../components/react/BackToTop';
 import BottomTabBar from '../components/react/BottomTabBar';
+import CookieConsent from '../components/react/CookieConsent';
+import CinematicGallery from '../components/CinematicGallery.astro';
+import FeaturedGallery from '../components/react/FeaturedGallery';
+import Testimonials from '../components/react/Testimonials';
 import '../styles/global.css';
+// Player chrome (fp-*). Loaded after global.css so it can use the colour tokens,
+// and before mobile.css so page-level mobile overrides still win.
+import '../styles/player.css';
 import '../styles/mobile.css';
 
 export interface Props {
@@ -17,6 +24,10 @@ export interface Props {
   noFooter?: boolean;
   noNav?: boolean;
   noIndex?: boolean;
+  /** Skip the shared CinematicGallery + Testimonials sections for this page. */
+  noExtras?: boolean;
+  /** Optional images for the shared CinematicGallery; falls back to a default set. */
+  galleryImages?: string[];
 }
 
 const {
@@ -27,7 +38,24 @@ const {
   noFooter = false,
   noNav = false,
   noIndex = false,
+  noExtras = false,
+  galleryImages = [],
 } = Astro.props;
+
+// Default backdrop set for the shared CinematicGallery so it renders on every
+// page (desktop + mobile) even when a page doesn't supply its own images.
+const DEFAULT_GALLERY_IMAGES = [
+  'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=780&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=780&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=780&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=780&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=780&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1595769816263-9b910be24d5f?w=780&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1524712245354-2c4e5e7121c0?w=780&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1502136969935-8d8eef54d77b?w=780&auto=format&fit=crop&q=60',
+];
+
+const extrasImages = galleryImages.length ? galleryImages : DEFAULT_GALLERY_IMAGES;
 
 const canonical = new URL(Astro.url.pathname, 'https://filmoramovie.com').toString();
 const ogImage   = image ?? 'https://filmoramovie.com/og-default.png';
@@ -137,6 +165,13 @@ const isHome = Astro.url.pathname === '/';
     <!-- ── Scroll progress bar (pure DOM, no React re-renders) ── -->
     <div id="scroll-progress" class="scroll-progress" aria-hidden="true"></div>
 
+    <!-- ── Navigation progress bar ──
+         Instant feedback for internal link clicks. Purely CSS-driven off a
+         class on <html>, set synchronously in the astro:before-preparation
+         handler, so the bar starts moving in the same frame as the click
+         instead of after the new document arrives. -->
+    <div id="nav-progress" class="nav-progress" aria-hidden="true"></div>
+
     <!-- Skip to main -->
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
@@ -148,6 +183,29 @@ const isHome = Astro.url.pathname === '/';
       <slot />
     </main>
 
+    {/* ── Shared cinematic gallery + testimonials ──
+         Rendered on every page (desktop + mobile) except the home page, which
+         renders its own pair (so we avoid duplicating them there). Pages can opt
+         out via the `noExtras` prop and supply their own images via
+         `galleryImages`.
+
+         Order: FeaturedGallery (WebGL) first, then the zero-JavaScript
+         CinematicGallery. GalleryShowcase used to sit after both and has been
+         removed site-wide — it was a second Three.js canvas rendering the same
+         hard-coded demo stills.
+
+         FeaturedGallery is client:visible, not client:only: client:only made
+         Astro's view-transition router reload the entire target page in a
+         hidden iframe on every navigation (prepareForClientOnlyComponents),
+         which was the single largest source of navigation latency. */}
+    {!isHome && !noExtras && (
+      <>
+        <FeaturedGallery client:visible={{ rootMargin: '400px' }} images={extrasImages} />
+        <CinematicGallery images={extrasImages} />
+        <Testimonials client:visible />
+      </>
+    )}
+
     {!noFooter && <CinematicFooter client:visible />}
 
     <!-- Bottom tab bar (mobile only — hidden via CSS at ≥768px) -->
@@ -156,8 +214,49 @@ const isHome = Astro.url.pathname === '/';
     <!-- Back-to-top (React island) -->
     <BackToTop client:idle threshold={600} />
 
+    <!-- ── Global cookie consent — shown on every page (mobile + desktop) ── -->
+    <CookieConsent client:idle />
+
     <!-- Scroll progress + scroll-reveal scripts -->
     <script>
+      // ── Navigation feedback ───────────────────────────────────
+      // The delay people feel on a nav click is the gap between the click and
+      // the new document being ready to swap. Nothing used to paint in that
+      // window, so the UI felt dead. These handlers run synchronously in the
+      // click's own task: the progress bar starts within one frame (<16ms) and
+      // the clicked link gets a pressed state immediately, well inside the
+      // 250ms budget, regardless of how long the document itself takes.
+      const rootEl = document.documentElement;
+
+      // Mark the clicked link the moment the pointer goes down — this fires
+      // before navigation even begins.
+      for (const evt of ['pointerdown', 'keydown'] as const) {
+        document.addEventListener(evt, (e) => {
+          if (evt === 'keydown' && (e as KeyboardEvent).key !== 'Enter') return;
+          const anchor = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+          if (!anchor) return;
+          let url: URL;
+          try { url = new URL(anchor.href, location.href); } catch { return; }
+          if (url.origin !== location.origin) return;
+          document.querySelectorAll('.is-navigating').forEach((el) => el.classList.remove('is-navigating'));
+          anchor.classList.add('is-navigating');
+        }, { passive: true, capture: true });
+      }
+
+      document.addEventListener('astro:before-preparation', () => {
+        rootEl.classList.remove('nav-done');
+        rootEl.classList.add('nav-loading');
+      });
+      function endNavProgress() {
+        rootEl.classList.remove('nav-loading');
+        rootEl.classList.add('nav-done');
+        document.querySelectorAll('.is-navigating').forEach((el) => el.classList.remove('is-navigating'));
+        window.setTimeout(() => rootEl.classList.remove('nav-done'), 260);
+      }
+      document.addEventListener('astro:after-swap', endNavProgress);
+      // If a navigation is cancelled or fails, don't leave the bar stuck.
+      window.addEventListener('pagehide', endNavProgress);
+
       // ── Human-gate: only a genuine document load / refresh may show the gate.
       //    On client-side (view-transition) navigation we remove any gate markup
       //    so it never appears off the home page and never blocks navigation.
@@ -225,6 +324,47 @@ const isHome = Astro.url.pathname === '/';
     transition: top 0.2s ease;
   }
   .skip-link:focus { top: 0; }
+
+  /* ── Navigation progress bar ──
+     Driven entirely by a class on <html> so it can start in the same frame as
+     the click. The first 90% is an eased "optimistic" fill (we don't know how
+     long the document will take); astro:after-swap snaps it to 100% and fades
+     it out. */
+  .nav-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    width: 0;
+    background: linear-gradient(90deg, #6366f1, #a855f7);
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.7);
+    z-index: calc(var(--z-nav) + 20);
+    opacity: 0;
+    pointer-events: none;
+    border-radius: 0 2px 2px 0;
+  }
+  :global(html.nav-loading) .nav-progress {
+    opacity: 1;
+    width: 90%;
+    transition: width 8s cubic-bezier(0.1, 0.7, 0.1, 1), opacity 0.1s linear;
+  }
+  :global(html.nav-done) .nav-progress {
+    opacity: 0;
+    width: 100%;
+    transition: width 0.12s ease-out, opacity 0.25s ease-out 0.1s;
+  }
+
+  /* Pressed state for the link being navigated to — applied on pointerdown,
+     before navigation starts, so the tap always registers visually. */
+  :global(a.is-navigating) {
+    opacity: 0.62;
+    transition: opacity 0.12s ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(html.nav-loading) .nav-progress,
+    :global(html.nav-done) .nav-progress { transition: none; }
+  }
 
   main { min-height: calc(100vh - 56px); }
 </style>

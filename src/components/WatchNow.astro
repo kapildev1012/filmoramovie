@@ -1,0 +1,76 @@
+---
+// src/components/WatchNow.astro — the shared "Watch Now" section.
+//
+// Both detail pages used to duplicate this markup with a different player
+// island. Now the section, its heading and its landmark wiring live here once,
+// and the single `WatchNow` island handles movies and series alike. (Provider
+// resource hints stay in each page's <head> slot, where <link> belongs — both
+// pages carry the same list.)
+//
+// Static by design: only the player itself is interactive, so the heading,
+// landmark and note ship as plain HTML with no JS cost.
+import WatchNowIsland from './react/player/WatchNow';
+import type { MediaSource, TimeMarker } from '../lib/player/types';
+import type { RelatedTitle } from './react/player/EndCard';
+
+interface SeasonOption {
+  season_number: number;
+  name: string;
+  episode_count: number;
+}
+
+interface Props {
+  mediaType: 'movie' | 'tv';
+  id: number | string;
+  title: string;
+  backdropUrl?: string | null;
+  posterUrl?: string | null;
+  /** Seasons for the episode picker (tv only, specials already filtered out). */
+  seasons?: SeasonOption[];
+  /** YouTube key of the official trailer, when TMDB has one. */
+  trailerKey?: string | null;
+  /**
+   * First-party stream. Leave undefined until Filmora has a licensed source —
+   * the player then upgrades from the third-party iframe to the full-capability
+   * <video> engine with no other change on this page.
+   */
+  media?: MediaSource | null;
+  /** Chapter markers for Skip Intro / Skip Recap / credits. */
+  markers?: TimeMarker[];
+  /** "More like this" tiles for the end card. */
+  related?: RelatedTitle[];
+}
+
+const {
+  mediaType,
+  id,
+  title,
+  backdropUrl = null,
+  posterUrl = null,
+  seasons = [],
+  trailerKey = null,
+  media = null,
+  markers = [],
+  related = [],
+} = Astro.props;
+---
+
+<section class="detail-section" id="watch" data-reveal aria-labelledby="watch-now-heading">
+  <h2 class="detail-section-title" id="watch-now-heading">Watch Now</h2>
+
+  <!-- client:load, not client:visible: this section is the reason most viewers
+       opened the page, and a late-hydrating Play button feels broken. -->
+  <WatchNowIsland
+    client:load
+    mediaType={mediaType}
+    id={id}
+    title={title}
+    backdropUrl={backdropUrl}
+    posterUrl={posterUrl}
+    seasons={seasons}
+    trailerKey={trailerKey}
+    media={media}
+    markers={markers}
+    related={related}
+  />
+</section>
