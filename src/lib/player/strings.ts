@@ -29,7 +29,7 @@ export type PlayerStringKey =
   | 'statePaused' | 'statePlaying' | 'stateMuted' | 'stateUnmuted' | 'stateEnded'
   | 'servers' | 'server' | 'trailer' | 'fullTitle' | 'shortcuts' | 'gestures'
   | 'auto' | 'autoBestHint' | 'bestQuality' | 'chooseServer'
-  | 'serverSwitched' | 'serverFellBack' | 'tapToUnmute' | 'embedAudioHint'
+  | 'serverSwitched' | 'serverFellBack' | 'tapToUnmute'
   | 'live' | 'relatedTitles' | 'playerRegion';
 
 type Dict = Record<PlayerStringKey, string>;
@@ -74,8 +74,6 @@ const en: Dict = {
   serverFellBack:
     'That server stopped responding, so playback moved to another one automatically. You can pick a different server above.',
   tapToUnmute: 'Tap to unmute',
-  embedAudioHint:
-    'This server plays in its own player, so sound is controlled inside the video. If it starts silent, tap the speaker in the video.',
   shortcuts: 'Keyboard shortcuts', gestures: 'Touch gestures', live: 'Live',
   relatedTitles: 'More like this',
   playerRegion: 'Video player',
@@ -122,8 +120,6 @@ const hi: Partial<Dict> = {
   serverFellBack:
     'वह सर्वर जवाब नहीं दे रहा था, इसलिए प्लेबैक अपने आप दूसरे सर्वर पर चला गया। आप ऊपर से कोई और सर्वर चुन सकते हैं।',
   tapToUnmute: 'आवाज़ चालू करने के लिए टैप करें',
-  embedAudioHint:
-    'यह सर्वर अपने प्लेयर में चलता है, इसलिए आवाज़ वीडियो के अंदर से नियंत्रित होती है। आवाज़ न आए तो वीडियो में स्पीकर पर टैप करें।',
   shortcuts: 'कीबोर्ड शॉर्टकट', gestures: 'टच जेस्चर', live: 'लाइव', relatedTitles: 'इसी तरह के और',
   playerRegion: 'वीडियो प्लेयर',
   offline: 'आप ऑफ़लाइन हैं। देखना जारी रखने के लिए फिर से कनेक्ट करें।',
@@ -169,8 +165,6 @@ const ja: Partial<Dict> = {
   serverFellBack:
     'サーバーが応答しなくなったため、自動的に別のサーバーで再生を続けました。上から別のサーバーを選べます。',
   tapToUnmute: 'タップで音声をオンに',
-  embedAudioHint:
-    'このサーバーは独自のプレーヤーで再生するため、音量は動画内で操作します。無音で始まる場合は動画内のスピーカーをタップしてください。',
   shortcuts: 'キーボードショートカット', gestures: 'タッチ操作', live: 'ライブ', relatedTitles: '関連作品',
   playerRegion: '動画プレーヤー',
   offline: 'オフラインです。接続を確認して再開してください。',
@@ -216,8 +210,6 @@ const fr: Partial<Dict> = {
   serverFellBack:
     'Ce serveur ne répondait plus, la lecture est passée automatiquement à un autre. Vous pouvez en choisir un autre ci-dessus.',
   tapToUnmute: 'Appuyez pour activer le son',
-  embedAudioHint:
-    'Ce serveur utilise son propre lecteur : le son se règle dans la vidéo. Si elle démarre en silence, appuyez sur le haut-parleur dans la vidéo.',
   shortcuts: 'Raccourcis clavier', gestures: 'Gestes tactiles', live: 'Direct', relatedTitles: 'Dans le même genre',
   playerRegion: 'Lecteur vidéo',
   offline: 'Vous êtes hors ligne. Reconnectez-vous pour continuer.',
@@ -263,8 +255,6 @@ const es: Partial<Dict> = {
   serverFellBack:
     'Ese servidor dejó de responder, así que la reproducción pasó automáticamente a otro. Puedes elegir uno distinto arriba.',
   tapToUnmute: 'Toca para activar el sonido',
-  embedAudioHint:
-    'Este servidor usa su propio reproductor, así que el sonido se controla dentro del vídeo. Si empieza en silencio, toca el altavoz del vídeo.',
   shortcuts: 'Atajos de teclado', gestures: 'Gestos táctiles', live: 'En directo', relatedTitles: 'Más como esto',
   playerRegion: 'Reproductor de vídeo',
   offline: 'Estás sin conexión. Vuelve a conectarte para seguir viendo.',
@@ -310,8 +300,6 @@ const de: Partial<Dict> = {
   serverFellBack:
     'Dieser Server antwortete nicht mehr, daher läuft die Wiedergabe automatisch über einen anderen. Oben kannst du einen anderen wählen.',
   tapToUnmute: 'Tippen, um den Ton einzuschalten',
-  embedAudioHint:
-    'Dieser Server nutzt seinen eigenen Player – der Ton wird im Video geregelt. Startet es stumm, tippe im Video auf das Lautsprechersymbol.',
   shortcuts: 'Tastenkürzel', gestures: 'Touch-Gesten', live: 'Live', relatedTitles: 'Ähnliche Titel',
   playerRegion: 'Videoplayer',
   offline: 'Du bist offline. Verbinde dich erneut, um weiterzuschauen.',
@@ -357,8 +345,6 @@ const pt: Partial<Dict> = {
   serverFellBack:
     'Esse servidor deixou de responder, por isso a reprodução passou automaticamente para outro. Pode escolher outro acima.',
   tapToUnmute: 'Toque para ativar o som',
-  embedAudioHint:
-    'Este servidor usa o seu próprio reprodutor, por isso o som controla-se dentro do vídeo. Se começar sem som, toque no altifalante do vídeo.',
   shortcuts: 'Atalhos de teclado', gestures: 'Gestos', live: 'Em direto', relatedTitles: 'Semelhantes',
   playerRegion: 'Reprodutor de vídeo',
   offline: 'Você está offline. Reconecte-se para continuar assistindo.',
@@ -404,8 +390,6 @@ const ko: Partial<Dict> = {
   serverFellBack:
     '해당 서버가 응답하지 않아 자동으로 다른 서버로 재생을 이어갔습니다. 위에서 다른 서버를 선택할 수 있습니다.',
   tapToUnmute: '탭하여 소리 켜기',
-  embedAudioHint:
-    '이 서버는 자체 플레이어로 재생하므로 소리는 영상 안에서 조절합니다. 소리 없이 시작되면 영상의 스피커를 누르세요.',
   shortcuts: '키보드 단축키', gestures: '터치 제스처', live: '라이브', relatedTitles: '비슷한 콘텐츠',
   playerRegion: '동영상 플레이어',
   offline: '오프라인 상태입니다. 다시 연결한 후 계속 시청하세요.',
@@ -449,7 +433,6 @@ const zh: Partial<Dict> = {
   serverSwitched: '已切换到 {name} — 上一个服务器没有响应',
   serverFellBack: '该服务器停止响应，已自动切换到其他服务器继续播放。你可以在上方另选一个。',
   tapToUnmute: '点按以开启声音',
-  embedAudioHint: '该服务器使用自己的播放器，音量需在视频内控制。若开始时没有声音，请点按视频中的喇叭图标。',
   shortcuts: '键盘快捷键', gestures: '触摸手势', live: '直播', relatedTitles: '相似影片',
   playerRegion: '视频播放器',
   offline: '您已离线，请重新连接后继续观看。',
