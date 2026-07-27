@@ -284,6 +284,9 @@ export default function InstantSearch({
   return (
     <div className="is-root">
       {/* ── Search field ───────────────────────────────────────────────── */}
+      {/* Wrapper is a no-op on desktop; on a phone it becomes a sticky, full-
+          bleed bar so the field stays reachable while the results scroll. */}
+      <div className="is-searchbar">
       <div className={`is-field ${loading ? 'is-field--busy' : ''}`} role="search">
         <svg className="is-field-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="8" />
@@ -313,6 +316,7 @@ export default function InstantSearch({
             </svg>
           </button>
         )}
+      </div>
       </div>
 
       {/* ── Live region for assistive tech ─────────────────────────────── */}
@@ -463,6 +467,7 @@ export default function InstantSearch({
 
       <style>{`
         .is-root { display: flex; flex-direction: column; }
+        .is-searchbar { position: relative; }
         .is-sr {
           position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
           overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -684,14 +689,48 @@ export default function InstantSearch({
         .is-dym-sub { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-3); }
 
         @media (max-width: 767px) {
+          /* Sticky, full-bleed search bar: it stays put just under the floating
+             nav pill while the results scroll, so re-typing or clearing never
+             means scrolling back to the top of the page. */
+          .is-searchbar {
+            position: sticky;
+            top: calc(var(--mob-nav-h, 60px) - 4px);
+            z-index: 20;
+            margin: 0 calc(-1 * var(--mob-pad-x, 1rem));
+            padding: 0.5rem var(--mob-pad-x, 1rem) 0.625rem;
+            background: var(--color-bg, #000);
+          }
+          .is-searchbar::after {
+            content: '';
+            position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+            background: var(--color-border); opacity: 0.7;
+          }
           .is-field { max-width: 100%; }
-          .is-input { height: 44px; font-size: 16px; }
+          .is-input { height: 46px; font-size: 16px; }
+
+          /* Tabs: momentum scroll and roomier 40px targets; a small edge inset so
+             the first and last pill are not flush against the screen edge. */
+          .is-tabs {
+            margin: 0.75rem 0 1rem;
+            padding-bottom: 0.125rem;
+            -webkit-overflow-scrolling: touch;
+            scroll-padding-inline: 0.25rem;
+          }
+          .is-tab { padding: 0.55rem 0.95rem; }
+
           .is-grid { grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
           .is-people { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 0.75rem; }
           .is-person-img { width: 68px; height: 68px; }
           .is-section { margin-bottom: 2rem; }
+          .is-section-head { margin-bottom: 0.75rem; }
+
+          /* No hover-lift on touch; keep the resting shadow. */
           .is-card:hover .is-card-media { transform: none; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-          .is-card-fav { opacity: 1; width: 30px; height: 30px; }
+          /* Favourite is always visible on touch and a larger tap target. */
+          .is-card-fav { opacity: 1; width: 36px; height: 36px; }
+
+          /* Chips are the primary navigation on the idle screen — thumb-sized. */
+          .is-chip { padding: 0.55rem 1rem; }
         }
         @media (max-width: 380px) {
           .is-grid { grid-template-columns: repeat(2, 1fr); }
