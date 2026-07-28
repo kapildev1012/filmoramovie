@@ -29,7 +29,7 @@ export const GET: APIRoute = async ({ url, request, locals }) => {
   }
 
   try {
-    const google = getGoogleOAuth();
+    const google = getGoogleOAuth(url.origin);
 
     // Exchange code for tokens
     const tokens = await google.validateAuthorizationCode(code, codeVerifier);
@@ -77,15 +77,17 @@ export const GET: APIRoute = async ({ url, request, locals }) => {
     // Build redirect — send user to /profile on first login, else /
     const redirectTo = profiles.length === 0 ? '/profile' : '/';
 
-    const cookieDomain = import.meta.env.PROD ? '; Domain=filmoramovie.com' : '';
+    // Host-only cookie: no explicit Domain, so it is scoped to whatever host
+    // served the request. A hardcoded Domain silently broke sign-in every time
+    // the site moved to a new domain. `Secure` follows the actual scheme rather
+    // than the build mode, so a production build served over http still works.
     const sessionCookie = [
       `${SESSION_COOKIE}=${session.id}`,
       'HttpOnly',
-      import.meta.env.PROD ? 'Secure' : '',
+      url.protocol === 'https:' ? 'Secure' : '',
       'SameSite=Lax',
       'Max-Age=2592000', // 30 days
       'Path=/',
-      cookieDomain,
     ].filter(Boolean).join('; ');
 
     // Clear oauth state cookies

@@ -57,8 +57,8 @@ const DEFAULT_GALLERY_IMAGES = [
 
 const extrasImages = galleryImages.length ? galleryImages : DEFAULT_GALLERY_IMAGES;
 
-const canonical = new URL(Astro.url.pathname, 'https://filmoramovie.com').toString();
-const ogImage   = image ?? 'https://filmoramovie.com/og-default.png';
+const canonical = new URL(Astro.url.pathname, 'https://filmoramovie.duckdns.org').toString();
+const ogImage   = image ?? 'https://filmoramovie.duckdns.org/og-default.png';
 const pageTitle = title === 'Filmora Movie' ? title : `${title} — Filmora Movie`;
 
 // Human verification gate is scoped to the home page only. It is rendered

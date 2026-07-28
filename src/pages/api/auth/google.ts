@@ -3,13 +3,14 @@ import type { APIRoute } from 'astro';
 import { getGoogleOAuth } from '../../../lib/oauth';
 import { generateCodeVerifier, generateState } from 'arctic';
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ request }) => {
   let authUrl: URL;
   const state = generateState();
   const codeVerifier = generateCodeVerifier();
+  const origin = new URL(request.url).origin;
 
   try {
-    const google = getGoogleOAuth();
+    const google = getGoogleOAuth(origin);
     authUrl = google.createAuthorizationURL(state, codeVerifier, ['openid', 'profile', 'email']);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'OAuth configuration error';
@@ -19,8 +20,11 @@ export const GET: APIRoute = async () => {
     );
   }
 
-  // Store state + verifier in short-lived cookies for CSRF protection
-  const cookieOpts = 'HttpOnly; Secure; SameSite=Lax; Max-Age=600; Path=/';
+  // Store state + verifier in short-lived cookies for CSRF protection.
+  // `Secure` only over https — a Secure cookie is dropped on http://localhost,
+  // which made the callback fail with invalid_state during local development.
+  const secure = origin.startsWith('https:') ? 'Secure; ' : '';
+  const cookieOpts = `HttpOnly; ${secure}SameSite=Lax; Max-Age=600; Path=/`;
 
   return new Response(null, {
     status: 302,

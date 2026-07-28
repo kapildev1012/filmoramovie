@@ -2,7 +2,7 @@
 import type { APIRoute } from 'astro';
 import { getTrendingMovies, getTrendingSeries } from '../lib/tmdb';
 
-const SITE = 'https://filmoramovie.com';
+const SITE = 'https://filmoramovie.duckdns.org';
 
 interface UrlEntry {
   loc: string;

@@ -175,7 +175,7 @@ export const POST: APIRoute = async ({ request }) => {
           headers: {
             'Content-Type': 'application/json',
             'X-Api-Key': nexosKey,
-            'User-Agent': 'FilmoraMovie/1.0 (+https://filmoramovie.com)',
+            'User-Agent': 'FilmoraMovie/1.0 (+https://filmoramovie.duckdns.org)',
           },
           body: JSON.stringify({
             model: workerEnv.NEXS_MODEL || 'GPT 4.1 mini',

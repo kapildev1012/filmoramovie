@@ -13,7 +13,7 @@ import tailwindcss from '@tailwindcss/vite';
 const noHmr = process.env.NO_HMR === '1';
 
 export default defineConfig({
-  site: 'https://filmoramovie.com',
+  site: 'https://filmoramovie.duckdns.org',
   output: 'server',
   // Cloudflare Workers adapter (v14, Astro 7 compatible). `platformProxy`
   // exposes bindings (e.g. the D1 `DB` binding) on `Astro.locals.runtime.env`
