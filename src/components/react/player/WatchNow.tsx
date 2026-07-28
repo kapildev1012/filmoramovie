@@ -20,12 +20,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './usePlayer';
+import { usePlatform } from './usePlatform';
 import PlayerShell from './PlayerShell';
 import SourceBar, { type ServerOption } from './SourceBar';
 import EpisodeOverlay, { type EpisodeItem, type SeasonOption } from './EpisodeOverlay';
 import UpNext from './UpNext';
 import EndCard, { type RelatedTitle } from './EndCard';
 import { useEmbedServers } from '../useEmbedServers';
+import { firstPlayable, probeServers } from '../../../lib/player/embedProbe';
 import { createPlayerT } from '../../../lib/player/strings';
 import { languageDirection } from '../../../lib/player/languages';
 import { SUPPORTED_LOCALES, type Locale } from '../../../lib/i18n';
@@ -106,6 +108,9 @@ export default function WatchNow({
 
   const t = useMemo(() => createPlayerT(uiLocale), [uiLocale]);
   const chromeDir = languageDirection(uiLocale);
+  // Which experience to present. One read, threaded into the shell; every piece
+  // of playback state below is platform-agnostic and shared by both.
+  const platform = usePlatform();
   const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
   const isSeries = mediaType === 'tv';
 
@@ -116,9 +121,9 @@ export default function WatchNow({
     // The embed engine is always an option for a real title; the server list is
     // never empty (useEmbedServers falls back to the static registry).
     list.push('embed');
-    if (trailerKey) list.push('youtube');
+    if (trailerKey && platform === 'mobile') list.push('youtube');
     return list;
-  }, [media, trailerKey]);
+  }, [media, trailerKey, platform]);
 
   const [engine, setEngine] = useState<EngineId>(() => (media ? 'html5' : 'embed'));
   const [started, setStarted] = useState(false);
@@ -164,6 +169,20 @@ export default function WatchNow({
   const episodeCache = useRef(new Map<number, EpisodeItem[]>());
   const [current, setCurrent] = useState<{ season: number; episode: number } | null>(null);
 
+  /**
+   * Lowest episode number in the active season. Almost always 1, but TMDB does
+   * carry seasons numbered from 0 (specials, recaps, some anime imports), and
+   * "Play" must start at a real episode, not a guess.
+   *
+   * Declared HERE, above `useEmbedServers`, because the server hook is now
+   * enabled eagerly (before the viewer picks an episode) and needs this value to
+   * probe the episode that Play would actually start.
+   */
+  const firstEpisodeNumber = useMemo(() => {
+    if (episodes.length === 0) return 1;
+    return episodes.reduce((low, e) => Math.min(low, e.episode_number), Infinity) || 1;
+  }, [episodes]);
+
   // ── Continue Watching ─────────────────────────────────────────────────────
   const [resumeAt, setResumeAt] = useState<number | null>(null);
   const [preferredServer, setPreferredServer] = useState<string | null>(null);
@@ -196,6 +215,12 @@ export default function WatchNow({
   // The hook ranks the list and makes the automatic pick; this island only says
   // which title it wants and reacts to outcomes. See serverRanking.ts for the
   // order of precedence behind "best".
+  //
+  // EAGERNESS: The hook is enabled even before the viewer presses Play (for
+  // series, even before an episode is selected). This lets the embed server
+  // probe (/api/embed/servers) finish and the auto-pick settle BEFORE the play
+  // tap, so pressing Play immediately has a server ready — saving 200-600ms of
+  // serial round-trips that previously ran only after the click.
   const {
     servers,
     ranked,
@@ -212,9 +237,9 @@ export default function WatchNow({
   } = useEmbedServers({
     type: isSeries ? 'tv' : 'movie',
     id,
-    season: current?.season ?? null,
-    episode: current?.episode ?? null,
-    enabled: engine === 'embed' && (!isSeries || current !== null),
+    season: current?.season ?? activeSeason,
+    episode: current?.episode ?? firstEpisodeNumber,
+    enabled: engine === 'embed',
     preferred: preferredServer,
   });
 
@@ -269,16 +294,6 @@ export default function WatchNow({
     }
     return map;
   }, [effectiveSeasons, episodes.length, activeSeason]);
-
-  /**
-   * Lowest episode number in the active season. Almost always 1, but TMDB does
-   * carry seasons numbered from 0 (specials, recaps, some anime imports), and
-   * "Play" must start at a real episode, not a guess.
-   */
-  const firstEpisodeNumber = useMemo(() => {
-    if (episodes.length === 0) return 1;
-    return episodes.reduce((low, e) => Math.min(low, e.episode_number), Infinity) || 1;
-  }, [episodes]);
 
   const neighbours = useMemo(() => {
     if (!current) return { prev: null, next: null } as {
@@ -445,6 +460,71 @@ export default function WatchNow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, snapshot.status, server, sourceKey]);
 
+  /**
+   * PRE-FLIGHT FAILOVER — skip a dead server BEFORE the viewer sees it.
+   *
+   * The reactive failover above is honest but expensive: the viewer stares at a
+   * loading provider for up to LOAD_TIMEOUT_MS (4.5s) before we know it is dead.
+   * This effect asks our own backend for the REAL HTTP status of the ranked
+   * shortlist for this exact title (see /api/embed/probe — the browser cannot ask
+   * the provider itself, CORS makes every cross-origin answer opaque) and moves
+   * off the current pick when the probe PROVES it is pointless:
+   *
+   *   • 404 / 410  → the provider does not have this title.
+   *   • unreachable → its host did not answer at all.
+   *
+   * Everything else — 403/429 (our datacenter IP throttled), 5xx, no answer in
+   * time — is explicitly NOT treated as a failure: those say nothing about the
+   * viewer's own connection, and dropping a server on that evidence would take
+   * away one that plays fine. In that case this effect does nothing at all and
+   * the iframe deadline remains the arbiter.
+   *
+   * Only runs while selection is automatic: a manual pick is the viewer's
+   * decision and must not be second-guessed by a probe.
+   */
+  const preflightFor = useRef<string>('');
+  useEffect(() => {
+    if (engine !== 'embed' || !started || !server || !isAuto) return;
+    if (ranked.length < 2) return;
+    const probeKey = `${isSeries ? 'tv' : 'movie'}:${id}:${current?.season ?? '-'}:${current?.episode ?? '-'}`;
+    if (preflightFor.current === probeKey) return;
+    preflightFor.current = probeKey;
+
+    const order = ranked.map((entry) => entry.server.id);
+    const ac = new AbortController();
+    void probeServers(
+      {
+        type: isSeries ? 'tv' : 'movie',
+        id,
+        season: current?.season ?? activeSeason,
+        episode: current?.episode ?? firstEpisodeNumber,
+      },
+      order,
+      { signal: ac.signal }
+    ).then((verdicts) => {
+      if (ac.signal.aborted) return;
+      const mine = verdicts.find((v) => v.server === server);
+      if (!mine || mine.playable) return; // current pick not disproven — leave it
+      const next = firstPlayable(order, verdicts, new Set([server]));
+      if (!next || next === server) return;
+      const name = servers.find((s) => s.id === next)?.name ?? next;
+      // Record the failure so the long-lived reliability ledger learns from it,
+      // exactly as a runtime failure would.
+      reportOutcome(server, false);
+      setFailedOver(true);
+      showToast(t('serverSwitched', { name }));
+      setServer(next);
+      setPreferredServer(next);
+      setReloadKey((key) => key + 1);
+      remember({ server: next });
+    });
+
+    return () => ac.abort();
+    // `ranked`/`servers` change identity as badges arrive; the probeKey guard is
+    // what keeps this to one probe per title, so they are intentionally excluded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, started, server, isAuto, id, isSeries, current?.season, current?.episode]);
+
   // ── Actions ───────────────────────────────────────────────────────────────
   const start = useCallback(() => {
     // For a series with nothing selected, start at the first episode that
@@ -460,6 +540,9 @@ export default function WatchNow({
     // the full failover walk.
     resetTried();
     failoverFor.current = '';
+    // A fresh attempt means a fresh pre-flight too: the provider may have added
+    // the title since we last asked.
+    preflightFor.current = '';
     setReloadKey((key) => key + 1);
   }, [resetTried]);
 
@@ -550,7 +633,7 @@ export default function WatchNow({
     snapshot.status === 'playing';
 
   const showUpNext = !!nextTarget && !upNextDismissed && (nearEnd || (endedFlag && !caps.endedSignal));
-  const upNextEyebrow = nextTarget ? `S${nextTarget.season} E${nextTarget.episode}` : '';
+  const upNextEyebrow = nextTarget ? `Season ${nextTarget.season} · Episode ${nextTarget.episode}` : '';
 
   const upNextNode =
     showUpNext && nextTarget ? (
@@ -608,7 +691,7 @@ export default function WatchNow({
   }));
 
   const subtitle = isSeries && current
-    ? [`S${current.season}`, `E${current.episode}`, currentEpisodeName].filter(Boolean).join(' · ')
+    ? [`Season ${current.season}`, `Episode ${current.episode}`, currentEpisodeName].filter(Boolean).join(' · ')
     : engine === 'youtube'
       ? t('trailer')
       : null;
@@ -639,6 +722,7 @@ export default function WatchNow({
       <PlayerShell
         api={api}
         t={t}
+        platform={platform}
         title={splashTitle}
         subtitle={subtitle}
         splashImage={backdropUrl ?? posterUrl ?? null}

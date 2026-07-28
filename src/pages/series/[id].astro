@@ -4,7 +4,7 @@ import Layout from '../../layouts/Layout.astro';
 import HeroCarousel from '../../components/react/HeroCarousel';
 import WatchNow from '../../components/WatchNow.astro';
 import MovieRail from '../../components/MovieRail.astro';
-import { CastGallery } from '../../components/ui/gallery';
+import SocialCards from '../../components/ui/card-fan-carousel';
 import { getSeriesFull, getOfficialTrailerKey } from '../../lib/tmdb';
 import type { HeroSlide } from '../../lib/tmdb';
 import type { TMDBCastMember, TMDBSeason } from '../../lib/types';
@@ -60,10 +60,10 @@ const backdropUrl = series?.backdrop_path ? `${TMDB_IMG}/w1280${series.backdrop_
 const posterUrl = series?.poster_path ? `${TMDB_IMG}/w500${series.poster_path}` : null;
 
 const cast = credits?.cast.slice(0, 20) ?? [];
-const castPhotos = cast
+const castCards = cast
   .filter((c) => c.profile_path)
-  .slice(0, 5)
-  .map((c) => ({ src: `https://image.tmdb.org/t/p/w185${c.profile_path}`, alt: c.name, name: c.name }));
+  .slice(0, 15)
+  .map((c) => ({ imgUrl: `https://image.tmdb.org/t/p/w300${c.profile_path}`, alt: c.name }));
 const releaseYear = series?.first_air_date?.slice(0, 4);
 const rating = series?.vote_average ? Math.round(series.vote_average * 10) / 10 : null;
 
@@ -125,7 +125,7 @@ const heroSlide: HeroSlide | null = series
           : series.number_of_seasons
             ? `${series.number_of_seasons} Season${series.number_of_seasons > 1 ? 's' : ''}`
             : null,
-      href: trailerKey ? '#trailer' : '#watch',
+      href: '#watch',
     }
   : null;
 
@@ -146,13 +146,16 @@ const galleryImages: string[] = [
   galleryImages={galleryImages}
 >
   <Fragment slot="head">
-    {/* Identical to the movie page — same providers, same hints, so playback
-         start-up cost does not depend on whether the title is a film or a show. */}
-    <link rel="dns-prefetch" href="https://www.vidking.net" />
-    <link rel="dns-prefetch" href="https://vidlink.pro" />
-    <link rel="dns-prefetch" href="https://player.videasy.net" />
-    <link rel="dns-prefetch" href="https://vidfast.pro" />
-    <link rel="dns-prefetch" href="https://api.codespecters.com" />
+    {/* Identical to the movie page — same providers, same preconnect hints, so
+         playback start-up cost does not depend on whether the title is a film or
+         a show. Preconnect completes DNS + TCP + TLS ahead of the iframe load. */}
+    <link rel="preconnect" href="https://www.vidking.net" crossorigin />
+    <link rel="preconnect" href="https://vidlink.pro" crossorigin />
+    <link rel="preconnect" href="https://player.videasy.net" crossorigin />
+    <link rel="preconnect" href="https://player.videasy.to" crossorigin />
+    <link rel="preconnect" href="https://vidfast.pro" crossorigin />
+    <link rel="preconnect" href="https://vidfast.vc" crossorigin />
+    <link rel="preconnect" href="https://api.codespecters.com" crossorigin />
   </Fragment>
   {error || !series ? (
     <div class="detail-error container">
@@ -164,7 +167,7 @@ const galleryImages: string[] = [
     <article>
       {/* ── Cinematic hero — identical to the /series browse hero ── */}
       {heroSlide && (
-        <HeroCarousel client:load slides={[heroSlide]} label={heroSlide.title} />
+        <HeroCarousel client:load slides={[heroSlide]} label={heroSlide.title} variant="detail" />
       )}
 
       <div class="detail-body container">
@@ -183,27 +186,11 @@ const galleryImages: string[] = [
           related={relatedForPlayer}
         />
 
-        {/* ── Trailer ── */}
-        {trailerKey && (
-          <section class="detail-section detail-hide-mobile" id="trailer" data-reveal aria-labelledby="trailer-heading">
-            <h2 class="detail-section-title" id="trailer-heading">Trailer</h2>
-            <div class="trailer-wrap">
-              <iframe
-                src={`https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1`}
-                title={`${series.name} — Official Trailer`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen
-                loading="lazy"
-                class="trailer-iframe"
-              />
-            </div>
-          </section>
-        )}
 
         {/* ── Seasons / Episodes accordion ── */}
         {mainSeasons.length > 0 && (
           <section class="detail-section" data-reveal aria-labelledby="seasons-heading">
-            <h2 class="detail-section-title" id="seasons-heading">Seasons</h2>
+            <h2 class="detail-section-title" id="seasons-heading">Seasons & Episodes</h2>
             <div class="seasons-list">
               {mainSeasons.map((season: TMDBSeason) => (
                 <details class="season-item">
@@ -272,40 +259,20 @@ const galleryImages: string[] = [
         )}
 
         {/* ── Cast ── */}
-        {cast.length > 0 && (
-          <section class="detail-section detail-hide-mobile" data-reveal aria-labelledby="cast-heading">
+        {castCards.length > 0 && (
+          <section class="detail-section" data-reveal aria-labelledby="cast-heading">
             <h2 class="detail-section-title" id="cast-heading">Cast</h2>
-            {castPhotos.length > 0 && (
-              <div class="cast-gallery-mobile">
-                <CastGallery client:visible photos={castPhotos} />
-              </div>
-            )}
-            <div class="cast-grid" role="list">
-              {cast.map((member: TMDBCastMember) => (
-                <div class="cast-card" role="listitem">
-                  <div class="cast-avatar">
-                    {member.profile_path ? (
-                      <img src={`https://image.tmdb.org/t/p/w185${member.profile_path}`} alt={member.name} class="cast-avatar-img" loading="lazy" width="80" height="120" />
-                    ) : (
-                      <div class="cast-avatar-placeholder" aria-hidden="true">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      </div>
-                    )}
-                  </div>
-                  <div class="cast-info">
-                    <span class="cast-name">{member.name}</span>
-                    <span class="cast-character">{member.character}</span>
-                  </div>
-                </div>
-              ))}
+            <div class="cast-fan-container w-full overflow-hidden flex justify-center">
+              <SocialCards client:load cards={castCards} />
             </div>
           </section>
         )}
 
         {/* ── Details ──
              Mirrors the movie page's Details block so both detail routes have the
-             same section order: Watch Now → Seasons → Trailer → Cast → Details →
-             More Like This. Series-specific facts (network, creators, air-date
+             same section order: Watch Now → Seasons → Trailer → Cast →
+             Details → More Like This. Series-specific facts
+             (network, creators, air-date
              range, episode counts) replace the film-only ones (budget, revenue).
              Not marked `detail-hide-mobile`: this is plain text, cheap to render,
              and it is the only place a phone viewer can see network / status. */}
@@ -349,7 +316,7 @@ const galleryImages: string[] = [
             )}
             {series.number_of_seasons > 0 && (
               <>
-                <dt>Episodes</dt>
+                <dt>Seasons & Episodes</dt>
                 <dd>
                   {series.number_of_seasons} season{series.number_of_seasons > 1 ? 's' : ''}
                   {series.number_of_episodes > 0 ? ` · ${series.number_of_episodes} episodes` : ''}

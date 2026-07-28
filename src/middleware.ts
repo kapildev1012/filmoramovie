@@ -1,6 +1,13 @@
 import { defineMiddleware } from 'astro:middleware';
 
-const PUBLIC_PAGE = /^(?:\/(?:movies|series|anime|netflix|prime|disney|hotstar|appletv|search)\/?|\/(?:movie|series)\/\d+\/?)$/;
+// Routes whose HTML is identical for every visitor. Verified: none of these
+// pages read `Astro.locals` or pass a `user` prop to Layout, so there is no
+// per-visitor markup to leak. The static content pages (about/terms/privacy/
+// contact) were previously missing, which meant they went out with no
+// Cache-Control at all — so a prefetched copy could not be reused and clicking
+// them paid a full round-trip. /profile, /watchlist and /login are deliberately
+// absent: they are per-user or part of an auth flow.
+const PUBLIC_PAGE = /^(?:\/(?:movies|series|anime|netflix|prime|disney|hotstar|appletv|search|about|terms|privacy|contact)\/?|\/(?:movie|series)\/\d+\/?)$/;
 
 function isPublicCatalogPage(pathname: string): boolean {
   return pathname === '/' || PUBLIC_PAGE.test(pathname);
@@ -29,15 +36,40 @@ export const onRequest = defineMiddleware(async ({ request, url, locals }, next)
   const isGet = request.method === 'GET' || request.method === 'HEAD';
   const isAuthenticated = (request.headers.get('cookie') ?? '').includes('filmora_session=');
 
-  if (!isGet || isAuthenticated || !isPublicCatalogPage(url.pathname)) {
+  if (!isGet || !isPublicCatalogPage(url.pathname)) {
     return next();
   }
 
-  // Never cache HTML while developing. Miniflare persists `caches.default` to
-  // .wrangler/state between runs, so a dev-time entry survived server restarts
-  // and an edit could stay invisible on exactly these routes.
+  // Never cache HTML while developing — for anyone, signed in or not. Miniflare
+  // persists `caches.default` to .wrangler/state between runs, so a dev-time
+  // entry survived server restarts and an edit could stay invisible on exactly
+  // these routes.
   if (import.meta.env.DEV) {
     return next();
+  }
+
+  // ── Authenticated visitors ──
+  // Never put their HTML in `caches.default`: that is a *shared* cache, and one
+  // visitor's document must never be served to another. But the previous code
+  // bailed out entirely, which meant the response carried no Cache-Control at
+  // all — so the copy Astro had already prefetched was not reusable and every
+  // navbar click paid a fresh SSR round-trip. `private` keeps the document in
+  // the visitor's own browser cache only, which is exactly what the prefetch
+  // needs, with no shared-cache exposure. `Vary: Cookie` stops any intermediary
+  // from collapsing entries across sessions.
+  if (isAuthenticated) {
+    const rendered = await next();
+    const contentType = rendered.headers.get('content-type') ?? '';
+    if (!rendered.ok || !contentType.includes('text/html')) return rendered;
+
+    const headers = new Headers(rendered.headers);
+    headers.set('Cache-Control', 'private, max-age=30');
+    headers.append('Vary', 'Cookie');
+    return new Response(rendered.body, {
+      status: rendered.status,
+      statusText: rendered.statusText,
+      headers,
+    });
   }
 
   type EdgeCacheStorage = CacheStorage & { default: Cache };

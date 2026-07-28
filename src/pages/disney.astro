@@ -23,7 +23,7 @@ const popularMovies = pageData?.popularMovies ?? [];
 
 <Layout title="Disney+ — Top 10 · Marvel · Star Wars · Pixar">
   {heroSlides.length > 0 && (
-    <HeroCarousel client:load slides={heroSlides} label="Disney+ Top 10" />
+    <HeroCarousel client:load slides={heroSlides} label="Disney+ Top 10" variant="page" />
   )}
 
   <div class="platform-page">

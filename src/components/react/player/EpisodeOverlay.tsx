@@ -10,8 +10,9 @@
 // The current episode is marked with `aria-current` and scrolled into view when
 // the list opens, so a viewer 14 episodes deep does not land at the top.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CloseIcon, PlayIcon } from './Icons';
+import StaggerEpisodes from './StaggerEpisodes';
 import type { PlayerT } from '../../../lib/player/strings';
 
 export interface SeasonOption {
@@ -46,6 +47,21 @@ interface EpisodeOverlayProps {
 
 const STILL = 'https://image.tmdb.org/t/p/w300';
 
+/** Phone-width check (≤767px), matched with matchMedia so the markup differs.
+ *  SSR-safe: false until the browser answers, so the server renders the list. */
+function useIsPhone(): boolean {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const query = window.matchMedia('(max-width: 767px)');
+    const sync = () => setPhone(query.matches);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  }, []);
+  return phone;
+}
+
 export default function EpisodeOverlay({
   variant,
   seasons,
@@ -61,6 +77,11 @@ export default function EpisodeOverlay({
   t,
 }: EpisodeOverlayProps) {
   const listRef = useRef<HTMLUListElement>(null);
+  const isPhone = useIsPhone();
+  // The staggered card carousel is the phone presentation of the *inline* browser
+  // only. In the overlay (over the video) the scannable list stays, and on
+  // tablet/desktop the whole season is visible at once so the list wins there too.
+  const useStagger = variant === 'inline' && isPhone;
 
   // Bring the episode being watched into view when the panel appears.
   useEffect(() => {
@@ -72,7 +93,7 @@ export default function EpisodeOverlay({
   return (
     <div className={variant === 'overlay' ? 'fp-episodes fp-episodes-overlay' : 'fp-episodes'}>
       <div className="fp-episodes-head">
-        <h3 className="fp-menu-title">{t('episodes')}</h3>
+        <h3 className="fp-menu-title">{seasons.length > 1 ? 'Seasons & Episodes' : t('episodes')}</h3>
         {seasons.length > 1 && (
           <div className="fp-season-tabs" role="tablist" aria-label={t('season')}>
             {seasons.map((season) => (
@@ -121,6 +142,14 @@ export default function EpisodeOverlay({
         </div>
       ) : episodes.length === 0 ? (
         <p className="fp-episodes-empty">{t('noEpisodes')}</p>
+      ) : useStagger ? (
+        <StaggerEpisodes
+          episodes={episodes}
+          activeSeason={activeSeason}
+          current={current}
+          onPlay={onPlay}
+          t={t}
+        />
       ) : (
         <ul className="fp-episode-list" ref={listRef}>
           {episodes.map((episode) => {

@@ -303,8 +303,13 @@ function GalleryScene({
     [speed]
   );
 
+  // Bind the wheel handler to *this* canvas. `document.querySelector('canvas')`
+  // grabbed whatever canvas happened to be first in the document, which on
+  // pages with more than one WebGL island was not ours.
+  const glCanvas = useThree((state) => state.gl.domElement);
+
   useEffect(() => {
-    const canvas = document.querySelector('canvas');
+    const canvas = glCanvas;
     if (canvas) {
       canvas.addEventListener('wheel', handleWheel, { passive: false });
       document.addEventListener('keydown', handleKeyDown);
@@ -314,7 +319,7 @@ function GalleryScene({
         document.removeEventListener('keydown', handleKeyDown);
       };
     }
-  }, [handleWheel, handleKeyDown]);
+  }, [glCanvas, handleWheel, handleKeyDown]);
 
   // Auto-play logic
   useEffect(() => {
@@ -518,6 +523,10 @@ function FallbackGallery({ images }: { images: ImageItem[] }) {
 
 export default function InfiniteGallery({
   images,
+  speed = 1,
+  zSpacing = 3,
+  visibleCount = 8,
+  falloff,
   className = 'h-96 w-full',
   style,
   fadeSettings = {
@@ -555,7 +564,7 @@ export default function InfiniteGallery({
   }
 
   return (
-    <div className={className} style={style}>
+    <div className={className} style={{ width: '100%', height: '100%', ...style }}>
       <Canvas
         camera={{ position: [0, 0, 0], fov: 55 }}
         gl={{ antialias: true, alpha: true }}
@@ -567,6 +576,10 @@ export default function InfiniteGallery({
         <Suspense fallback={null}>
           <GalleryScene
             images={images}
+            speed={speed}
+            zSpacing={zSpacing}
+            visibleCount={visibleCount}
+            falloff={falloff}
             fadeSettings={fadeSettings}
             blurSettings={blurSettings}
           />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type ConsentLevel = 'all' | 'essential' | null;
 
@@ -14,6 +14,7 @@ interface ConsentPrefs {
 export default function CookieConsent() {
   const [visible, setVisible] = useState(false);
   const [showCustomize, setShowCustomize] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
   const [prefs, setPrefs] = useState<ConsentPrefs>({
     essential: true, // always on
     preferences: false,
@@ -28,6 +29,66 @@ export default function CookieConsent() {
       return () => clearTimeout(t);
     }
   }, []);
+
+  /**
+   * RESERVE THE BANNER'S OWN HEIGHT.
+   *
+   * The banner is `position: fixed; bottom: 0` at z-index 200, so it paints over
+   * whatever the bottom of the viewport happens to be showing. On a phone it is
+   * not a slim strip but a stacked card (see mobile.css: column layout, full-width
+   * buttons, optional "customize" panel) — 200px or more. Anything a viewer
+   * scrolls to the bottom edge is therefore not just hidden but UNTAPPABLE, and
+   * the page offers no way to scroll it clear because the document ends there.
+   *
+   * That is how the player's server picker became unusable on mobile: it sits
+   * directly under the video, the viewer scrolls down to it, and it lands in the
+   * band the banner owns. Taps went to the banner.
+   *
+   * Publishing the measured height lets the document grow by exactly that much,
+   * so every element can be scrolled into free space. Measured rather than
+   * hard-coded because the height changes with locale wrapping and with the
+   * customize panel opening. Cleared on unmount so a dismissed banner leaves no
+   * dead space behind.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    const clear = () => {
+      root.classList.remove('has-consent-bar');
+      root.style.removeProperty('--consent-bar-h');
+    };
+    if (!visible) {
+      clear();
+      return;
+    }
+    const bar = barRef.current;
+    if (!bar) return;
+    const publish = () => {
+      // Reserve the whole band the banner owns: its own height PLUS its offset
+      // from the bottom edge, because on mobile it is lifted clear of the bottom
+      // tab bar (mobile.css) and the safe-area inset. One measurement covers
+      // banner, lift and inset with nothing hard-coded.
+      //
+      // Deliberately `offsetHeight` + computed `bottom` rather than
+      // getBoundingClientRect(): the banner enters with a `translateY(100%)`
+      // slide, and a rect read mid-animation reports it still off-screen, which
+      // would publish a band far too small and leave the content trapped again.
+      // Layout values are transform-independent, so the number is right on the
+      // first frame.
+      const bottom = parseFloat(getComputedStyle(bar).bottom) || 0;
+      const band = Math.max(0, Math.ceil(bar.offsetHeight + bottom));
+      root.classList.add('has-consent-bar');
+      root.style.setProperty('--consent-bar-h', `${band}px`);
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(bar);
+    window.addEventListener('resize', publish);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', publish);
+      clear();
+    };
+  }, [visible, showCustomize]);
 
   function saveConsent(level: ConsentLevel, customPrefs?: ConsentPrefs) {
     const finalPrefs: ConsentPrefs = customPrefs ?? {
@@ -47,6 +108,7 @@ export default function CookieConsent() {
 
   return (
     <div
+      ref={barRef}
       role="dialog"
       aria-modal="true"
       aria-label="Cookie consent"

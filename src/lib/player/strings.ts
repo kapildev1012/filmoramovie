@@ -15,6 +15,7 @@ export type PlayerStringKey =
   | 'mute' | 'unmute' | 'volume' | 'brightness'
   | 'zoomIn' | 'zoomOut' | 'fillScreen' | 'resetZoom'
   | 'fullscreen' | 'exitFullscreen' | 'pip'
+  | 'minimize' | 'expand'
   | 'settings' | 'more' | 'close' | 'cancel' | 'retry' | 'reload'
   | 'speed' | 'normal'
   | 'audioAndSubtitles' | 'audio' | 'subtitles' | 'off'
@@ -29,6 +30,7 @@ export type PlayerStringKey =
   | 'statePaused' | 'statePlaying' | 'stateMuted' | 'stateUnmuted' | 'stateEnded'
   | 'servers' | 'server' | 'trailer' | 'fullTitle' | 'shortcuts' | 'gestures'
   | 'auto' | 'autoBestHint' | 'bestQuality' | 'chooseServer'
+  | 'quality' | 'qualityOnServerHint'
   | 'serverSwitched' | 'serverFellBack' | 'tapToUnmute'
   | 'live' | 'relatedTitles' | 'playerRegion';
 
@@ -39,6 +41,7 @@ const en: Dict = {
   mute: 'Mute', unmute: 'Unmute', volume: 'Volume', brightness: 'Brightness',
   zoomIn: 'Zoom in', zoomOut: 'Zoom out', fillScreen: 'Fill screen', resetZoom: 'Reset zoom',
   fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', pip: 'Picture in picture',
+  minimize: 'Minimize', expand: 'Expand',
   settings: 'Settings', more: 'More', close: 'Close', cancel: 'Cancel', retry: 'Try again', reload: 'Reload',
   speed: 'Playback speed', normal: 'Normal',
   audioAndSubtitles: 'Audio & Subtitles', audio: 'Audio', subtitles: 'Subtitles', off: 'Off',
@@ -69,6 +72,9 @@ const en: Dict = {
   auto: 'Auto',
   autoBestHint: 'Pick the best available server automatically',
   bestQuality: 'Best',
+  quality: 'Video quality',
+  qualityOnServerHint:
+    'This server picks the resolution inside its own player, so quality cannot be set from here. Switch servers if the picture is soft.',
   chooseServer: 'Choose server',
   serverSwitched: 'Switched to {name} — the previous server did not respond',
   serverFellBack:
@@ -85,6 +91,7 @@ const hi: Partial<Dict> = {
   mute: 'म्यूट करें', unmute: 'अनम्यूट करें', volume: 'आवाज़', brightness: 'चमक',
   zoomIn: 'ज़ूम इन', zoomOut: 'ज़ूम आउट', fillScreen: 'स्क्रीन भरें', resetZoom: 'ज़ूम रीसेट',
   fullscreen: 'फ़ुल स्क्रीन', exitFullscreen: 'फ़ुल स्क्रीन बंद करें', pip: 'पिक्चर इन पिक्चर',
+  minimize: 'छोटा करें', expand: 'बड़ा करें',
   settings: 'सेटिंग', more: 'और', close: 'बंद करें', cancel: 'रद्द करें', retry: 'फिर कोशिश करें', reload: 'रीलोड',
   speed: 'गति', normal: 'सामान्य',
   audioAndSubtitles: 'ऑडियो और सबटाइटल', audio: 'ऑडियो', subtitles: 'सबटाइटल', off: 'बंद',
@@ -115,6 +122,7 @@ const hi: Partial<Dict> = {
   auto: 'ऑटो',
   autoBestHint: 'सबसे अच्छा उपलब्ध सर्वर अपने आप चुनें',
   bestQuality: 'सर्वश्रेष्ठ',
+  quality: 'वीडियो गुणवत्ता',
   chooseServer: 'सर्वर चुनें',
   serverSwitched: '{name} पर बदल दिया — पिछला सर्वर जवाब नहीं दे रहा था',
   serverFellBack:
@@ -130,6 +138,7 @@ const ja: Partial<Dict> = {
   mute: 'ミュート', unmute: 'ミュート解除', volume: '音量', brightness: '明るさ',
   zoomIn: '拡大', zoomOut: '縮小', fillScreen: '画面に合わせる', resetZoom: 'ズームをリセット',
   fullscreen: '全画面', exitFullscreen: '全画面を終了', pip: 'ピクチャーインピクチャー',
+  minimize: '最小化', expand: '拡大表示',
   settings: '設定', more: 'その他', close: '閉じる', cancel: 'キャンセル', retry: '再試行', reload: '再読み込み',
   speed: '再生速度', normal: '標準',
   audioAndSubtitles: '音声と字幕', audio: '音声', subtitles: '字幕', off: 'オフ',
@@ -160,6 +169,7 @@ const ja: Partial<Dict> = {
   auto: '自動',
   autoBestHint: '利用できる最良のサーバーを自動で選択します',
   bestQuality: '最適',
+  quality: '画質',
   chooseServer: 'サーバーを選択',
   serverSwitched: '{name} に切り替えました — 前のサーバーが応答しませんでした',
   serverFellBack:
@@ -175,6 +185,7 @@ const fr: Partial<Dict> = {
   mute: 'Couper le son', unmute: 'Activer le son', volume: 'Volume', brightness: 'Luminosité',
   zoomIn: 'Zoom avant', zoomOut: 'Zoom arrière', fillScreen: 'Remplir l’écran', resetZoom: 'Réinitialiser le zoom',
   fullscreen: 'Plein écran', exitFullscreen: 'Quitter le plein écran', pip: 'Image dans l’image',
+  minimize: 'Réduire', expand: 'Agrandir',
   settings: 'Paramètres', more: 'Plus', close: 'Fermer', cancel: 'Annuler', retry: 'Réessayer', reload: 'Recharger',
   speed: 'Vitesse de lecture', normal: 'Normale',
   audioAndSubtitles: 'Audio et sous-titres', audio: 'Audio', subtitles: 'Sous-titres', off: 'Désactivés',
@@ -205,6 +216,7 @@ const fr: Partial<Dict> = {
   auto: 'Auto',
   autoBestHint: 'Choisir automatiquement le meilleur serveur disponible',
   bestQuality: 'Meilleur',
+  quality: 'Qualité vidéo',
   chooseServer: 'Choisir un serveur',
   serverSwitched: 'Passage à {name} — le serveur précédent ne répondait plus',
   serverFellBack:
@@ -220,6 +232,7 @@ const es: Partial<Dict> = {
   mute: 'Silenciar', unmute: 'Activar sonido', volume: 'Volumen', brightness: 'Brillo',
   zoomIn: 'Acercar', zoomOut: 'Alejar', fillScreen: 'Llenar pantalla', resetZoom: 'Restablecer zoom',
   fullscreen: 'Pantalla completa', exitFullscreen: 'Salir de pantalla completa', pip: 'Imagen en imagen',
+  minimize: 'Minimizar', expand: 'Ampliar',
   settings: 'Ajustes', more: 'Más', close: 'Cerrar', cancel: 'Cancelar', retry: 'Reintentar', reload: 'Recargar',
   speed: 'Velocidad', normal: 'Normal',
   audioAndSubtitles: 'Audio y subtítulos', audio: 'Audio', subtitles: 'Subtítulos', off: 'Desactivados',
@@ -250,6 +263,7 @@ const es: Partial<Dict> = {
   auto: 'Auto',
   autoBestHint: 'Elegir automáticamente el mejor servidor disponible',
   bestQuality: 'Mejor',
+  quality: 'Calidad de vídeo',
   chooseServer: 'Elegir servidor',
   serverSwitched: 'Cambiado a {name}: el servidor anterior no respondía',
   serverFellBack:
@@ -265,6 +279,7 @@ const de: Partial<Dict> = {
   mute: 'Stumm', unmute: 'Ton ein', volume: 'Lautstärke', brightness: 'Helligkeit',
   zoomIn: 'Vergrößern', zoomOut: 'Verkleinern', fillScreen: 'Bild füllen', resetZoom: 'Zoom zurücksetzen',
   fullscreen: 'Vollbild', exitFullscreen: 'Vollbild beenden', pip: 'Bild-in-Bild',
+  minimize: 'Minimieren', expand: 'Vergrößern',
   settings: 'Einstellungen', more: 'Mehr', close: 'Schließen', cancel: 'Abbrechen', retry: 'Erneut versuchen', reload: 'Neu laden',
   speed: 'Geschwindigkeit', normal: 'Normal',
   audioAndSubtitles: 'Audio & Untertitel', audio: 'Audio', subtitles: 'Untertitel', off: 'Aus',
@@ -295,6 +310,7 @@ const de: Partial<Dict> = {
   auto: 'Auto',
   autoBestHint: 'Automatisch den besten verfügbaren Server wählen',
   bestQuality: 'Beste',
+  quality: 'Videoqualität',
   chooseServer: 'Server wählen',
   serverSwitched: 'Zu {name} gewechselt – der vorherige Server antwortete nicht',
   serverFellBack:
@@ -310,6 +326,7 @@ const pt: Partial<Dict> = {
   mute: 'Sem som', unmute: 'Com som', volume: 'Volume', brightness: 'Brilho',
   zoomIn: 'Ampliar', zoomOut: 'Reduzir', fillScreen: 'Preencher ecrã', resetZoom: 'Redefinir zoom',
   fullscreen: 'Ecrã inteiro', exitFullscreen: 'Sair do ecrã inteiro', pip: 'Imagem sobre imagem',
+  minimize: 'Minimizar', expand: 'Ampliar',
   settings: 'Configurações', more: 'Mais', close: 'Fechar', cancel: 'Cancelar', retry: 'Tentar novamente', reload: 'Recarregar',
   speed: 'Velocidade', normal: 'Normal',
   audioAndSubtitles: 'Áudio e legendas', audio: 'Áudio', subtitles: 'Legendas', off: 'Desativadas',
@@ -340,6 +357,7 @@ const pt: Partial<Dict> = {
   auto: 'Auto',
   autoBestHint: 'Escolher automaticamente o melhor servidor disponível',
   bestQuality: 'Melhor',
+  quality: 'Qualidade de vídeo',
   chooseServer: 'Escolher servidor',
   serverSwitched: 'Mudou para {name} — o servidor anterior não respondeu',
   serverFellBack:
@@ -355,6 +373,7 @@ const ko: Partial<Dict> = {
   mute: '음소거', unmute: '음소거 해제', volume: '음량', brightness: '밝기',
   zoomIn: '확대', zoomOut: '축소', fillScreen: '화면 채우기', resetZoom: '확대 초기화',
   fullscreen: '전체 화면', exitFullscreen: '전체 화면 종료', pip: '화면 속 화면',
+  minimize: '최소화', expand: '확대',
   settings: '설정', more: '더보기', close: '닫기', cancel: '취소', retry: '다시 시도', reload: '새로 고침',
   speed: '재생 속도', normal: '기본',
   audioAndSubtitles: '음성 및 자막', audio: '음성', subtitles: '자막', off: '끄기',
@@ -385,6 +404,7 @@ const ko: Partial<Dict> = {
   auto: '자동',
   autoBestHint: '사용 가능한 최적의 서버를 자동으로 선택',
   bestQuality: '최적',
+  quality: '화질',
   chooseServer: '서버 선택',
   serverSwitched: '{name}(으)로 전환했습니다 — 이전 서버가 응답하지 않았습니다',
   serverFellBack:
@@ -400,6 +420,7 @@ const zh: Partial<Dict> = {
   mute: '静音', unmute: '取消静音', volume: '音量', brightness: '亮度',
   zoomIn: '放大', zoomOut: '缩小', fillScreen: '填满屏幕', resetZoom: '重置缩放',
   fullscreen: '全屏', exitFullscreen: '退出全屏', pip: '画中画',
+  minimize: '最小化', expand: '展开',
   settings: '设置', more: '更多', close: '关闭', cancel: '取消', retry: '重试', reload: '重新加载',
   speed: '播放速度', normal: '正常',
   audioAndSubtitles: '音轨与字幕', audio: '音轨', subtitles: '字幕', off: '关闭',
@@ -429,6 +450,7 @@ const zh: Partial<Dict> = {
   auto: '自动',
   autoBestHint: '自动选择可用的最佳服务器',
   bestQuality: '最佳',
+  quality: '视频画质',
   chooseServer: '选择服务器',
   serverSwitched: '已切换到 {name} — 上一个服务器没有响应',
   serverFellBack: '该服务器停止响应，已自动切换到其他服务器继续播放。你可以在上方另选一个。',

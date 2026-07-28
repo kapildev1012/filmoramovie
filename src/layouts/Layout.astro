@@ -11,9 +11,12 @@ import CinematicGallery from '../components/CinematicGallery.astro';
 import FeaturedGallery from '../components/react/FeaturedGallery';
 import Testimonials from '../components/react/Testimonials';
 import '../styles/global.css';
-// Player chrome (fp-*). Loaded after global.css so it can use the colour tokens,
-// and before mobile.css so page-level mobile overrides still win.
-import '../styles/player.css';
+// Player chrome (fp-*) is NOT imported here on purpose. It is ~59 kB of CSS that
+// only the two detail routes need, and a global import put all 196 fp-* rules
+// into the stylesheet every page blocks first paint on. It now lives in
+// components/WatchNow.astro, so only /movie/:id and /series/:id pay for it.
+// Safe to move: global.css and mobile.css contain zero fp-* rules, so nothing
+// overrides player chrome and the cascade order is unaffected.
 import '../styles/mobile.css';
 
 export interface Props {
@@ -77,6 +80,29 @@ const isHome = Astro.url.pathname === '/';
     <meta name="description" content={description} />
     {noIndex && <meta name="robots" content="noindex, nofollow" />}
     <link rel="canonical" href={canonical} />
+
+    {/* ── Frame lockdown (ad / popup / redirect hardening) ──────────────────
+        Only `frame-src`/`child-src` are set (no `default-src`), so nothing else
+        on the page is constrained — scripts, styles, images, fonts and XHR are
+        untouched. This restricts what the site is allowed to embed to the exact
+        set of origins we actually frame, so a streaming provider that tries to
+        redirect its iframe to an unlisted ad/redirect host is blocked by the
+        browser. Since the per-iframe `sandbox` was removed (see
+        adapters/embed.ts), this allowlist is the only thing restricting where a
+        provider frame can navigate — keep it in sync with lib/embed.ts.
+        Origins:
+          'self'                       — same-origin /api/embed proxy + Astro
+                                         ClientRouter's hidden prefetch iframes.
+          youtube(.com/-nocookie.com)  — TMDB trailer + YouTube player engine.
+          challenges.cloudflare.com    — Turnstile human-check widget (home).
+          vidlink / videasy / vidfast / vidking — the four streaming providers,
+                                         including the .to/.vc domains they now
+                                         301-redirect to. nexstream is pinned to
+                                         www.vidking.net (see lib/embed.ts). */}
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com https://vidlink.pro https://player.videasy.net https://player.videasy.to https://vidfast.pro https://vidfast.vc https://www.vidking.net; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com https://vidlink.pro https://player.videasy.net https://player.videasy.to https://vidfast.pro https://vidfast.vc https://www.vidking.net"
+    />
 
     <!-- Open Graph -->
     <meta property="og:type"        content="website" />

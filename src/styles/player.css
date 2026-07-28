@@ -15,7 +15,17 @@
      disabled under prefers-reduced-motion at the bottom of this file.
    ══════════════════════════════════════════════════════════════════════════ */
 
-.fp-root {
+/* ─── Player design tokens ───────────────────────────────────────────────────
+   Declared on :root, not on `.fp-root`, because some of the player's surfaces
+   render OUTSIDE the `.fp-root` subtree and must still resolve them — chiefly the
+   server popover and its backdrop, which are portalled into <body> (see
+   SourceBar.tsx). Scoped to `.fp-root` these came out unset on the portalled
+   nodes, which showed up as a popover with `background: rgba(0,0,0,0)` and a 0px
+   border: a transparent, unreadable panel floating over the page. The values are
+   static (or derive from the site-wide --color-* tokens), so nothing is lost by
+   lifting them, and `.fp-stage` still re-declares the two breakpoint tokens that
+   are read off it by getComputedStyle. */
+:root {
   /* ─── Breakpoint tokens (also read by JS — see readRemToken) ─── */
   --fp-bp-compact: 40rem;   /* below: primary transport only, 44px targets   */
   --fp-bp-wide: 64rem;      /* above: speed, PiP, labels, full time readout  */
@@ -34,13 +44,56 @@
   --fp-accent-to: var(--color-accent-to, #a142f4);
   /* Glyph colour inside the filled CC badge. */
   --fp-cc-glyph: #0a0a0a;
+  /* ─── Third-party control band ─────────────────────────────────────────────
+     Height reserved at the BOTTOM of the stage for the provider's OWN control
+     bar when the embed engine is playing. Our chrome is lifted clear of this
+     band (see the `.is-engine-embed` block further down) so a tap on the
+     provider's play/pause, timeline, volume, quality, subtitle or fullscreen
+     button reaches the iframe instead of our overlay. Measured from the four
+     providers' players, which all draw a ~48-56px bar plus padding. */
+  --fp-native-bar-h: 3.5rem;
   --fp-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
 
+.fp-root {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   container-type: inline-size;
+}
+
+/* ─── Watch Now section wrapper ──────────────────────────────────────────────
+   The island renders the player (`.fp-root`) and, for a series, the inline
+   episode browser (`.fp-episodes`) as SIBLINGS here. Without a rule this wrapper
+   was an unstyled block: the episode list butted straight up against the source
+   bar with no separation, and — because the inline list sits outside `.fp-root`
+   — its `@container` query had no container to resolve against and it was pinned
+   to a single column at every width. Making the wrapper a flex column gives the
+   two regions consistent breathing room, and `container-type: inline-size` lets
+   the inline episode grid go multi-column on tablets and desktop while staying
+   single-column on a phone. */
+.fp-watchnow {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+@media (max-width: 40rem) {
+  /* Roomier mobile layout: more air between the player, the source bar and the
+     episode browser, plus breathing room above and below the whole section. */
+  .fp-watchnow {
+    gap: 1.6rem;
+  }
+  .fp-root {
+    gap: 1.1rem;
+  }
+  #watch {
+    padding-block: 1.5rem;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────── Stage ─── */
@@ -126,6 +179,45 @@
   overscroll-behavior: none;
 }
 
+/* ─── Mobile immersive takeover ──────────────────────────────────────────────
+   The native-app model: once Play is pressed on a phone, the SAME stage element
+   leaves its page box and fills the screen. Portrait shows the 16:9 frame
+   letterboxed in black with the chrome overlaid — the Netflix / JioHotstar app
+   look. Distinct from `.is-fullscreen` (which is the real Fullscreen API) and
+   from `.is-pseudo-fullscreen` (the iOS <div> fallback); this one is the DEFAULT
+   playback surface on mobile, reachable and dismissable without leaving the page.
+   z-index sits just below pseudo-fullscreen (9999) so tapping the fullscreen
+   button from within the takeover still wins. */
+.fp-stage.is-mobile-immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  width: 100vw;
+  height: 100dvh;
+  aspect-ratio: auto;
+  border-radius: 0;
+  animation: fp-immersive-in 280ms var(--fp-ease);
+}
+
+@keyframes fp-immersive-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(1.5rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Its own scroll lock, independent of `.fp-noscroll` so the immersive lock and
+   the pseudo-fullscreen lock never clobber each other. */
+.fp-immersive-lock,
+.fp-immersive-lock body {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
 /* ──────────────────────────────────────────────────────────── Splash ─── */
 
 .fp-splash {
@@ -157,16 +249,29 @@
   width: 4.5rem;
   height: 4.5rem;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.14);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgb(255 255 255 / 0.35);
-  transition: transform 220ms var(--fp-ease), background 220ms var(--fp-ease);
+  background: rgba(4, 4, 6, 0.6);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid rgb(255 255 255 / 0.24);
+  box-shadow:
+    inset 1px 1px 1px -0.5px rgba(255, 255, 255, 0.6),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.35),
+    inset 0 0 8px 6px rgba(255, 255, 255, 0.05),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 220ms var(--fp-ease), background 220ms var(--fp-ease),
+    box-shadow 220ms var(--fp-ease);
 }
 
 .fp-splash:hover .fp-splash-play,
 .fp-splash:focus-visible .fp-splash-play {
   transform: scale(1.06);
-  background: linear-gradient(135deg, var(--fp-accent-from), var(--fp-accent-to));
+  background: rgba(14, 14, 18, 0.72);
+  box-shadow:
+    inset 1px 1px 1px -0.5px rgba(255, 255, 255, 0.75),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.45),
+    inset 0 0 10px 6px rgba(255, 255, 255, 0.08),
+    0 0 16px rgba(255, 255, 255, 0.18),
+    0 6px 18px rgba(0, 0, 0, 0.4);
 }
 
 .fp-splash-text {
@@ -638,6 +743,34 @@
   text-overflow: ellipsis;
 }
 
+/* ─── Immersive top bar: grab handle + minimize / expand ─────────────────────
+   The grip is the affordance that says "pull me down". It sits centred above the
+   bar's contents, and a downward drag anywhere on the bar (handled in
+   PlayerShell) collapses the takeover. `touch-action: none` so the browser does
+   not steal the vertical drag for its own scroll/refresh gesture. */
+.fp-topbar.is-immersive {
+  padding-top: max(1.1rem, calc(env(safe-area-inset-top) + 0.6rem));
+  touch-action: none;
+}
+
+.fp-topbar-grip {
+  position: absolute;
+  top: 0.4rem;
+  left: 50%;
+  width: 2.5rem;
+  height: 0.28rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.55);
+}
+
+/* The expand chevron (shown on the boxed mobile player) pins to the far end so
+   it never crowds the title. Logical margin so it flips under RTL. */
+.fp-topbar-expand {
+  margin-inline-start: auto;
+  flex: none;
+}
+
 /* ──────────────────────────────────────────────── Skip Intro button ─── */
 
 .fp-skip-marker {
@@ -1103,6 +1236,26 @@
     border-radius: 1rem 1rem 0 0;
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
+
+  /* The episode picker is the one sheet that wants the whole screen: a native
+     app presents episodes as a tall, scrollable, thumbnail-led list, not a short
+     popover. It gets a grab handle (via ::before) to read as a pull-up sheet. */
+  .fp-menu.fp-menu-wide {
+    max-height: 90vh;
+    padding-top: 1.4rem;
+  }
+
+  .fp-menu.fp-menu-wide::before {
+    content: '';
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.5rem;
+    height: 0.28rem;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.45);
+  }
 }
 
 .fp-menu-title {
@@ -1449,7 +1602,7 @@
 .fp-upnext-thumb {
   flex: none;
   width: 5rem;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 7 / 11;
   border-radius: 0.35rem;
   background-color: #111;
   background-size: cover;
@@ -1687,15 +1840,28 @@
   align-items: center;
   gap: 0.35rem;
   min-height: 2.25rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--color-border, #1f1f1f);
+  padding: 0 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  background: var(--color-surface, #0a0a0a);
+  background: rgba(0, 0, 0, 0.85);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
   color: var(--color-text, #ededed);
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 140ms var(--fp-ease), background 140ms var(--fp-ease);
+  box-shadow:
+    inset 1px 1px 1px -0.5px rgba(255, 255, 255, 0.15),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.05),
+    inset 0 0 6px 4px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.5);
+  transition: border-color 140ms var(--fp-ease), background 140ms var(--fp-ease),
+    box-shadow 140ms var(--fp-ease), transform 140ms var(--fp-ease);
+}
+
+/* Fallback where backdrop-filter is unsupported: a solid dark pill. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .fp-pill { background: rgba(8, 8, 10, 0.95); }
 }
 
 @media (pointer: coarse) {
@@ -1705,7 +1871,9 @@
 }
 
 .fp-pill:hover {
-  border-color: var(--color-text-3, #666);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.95);
+  transform: scale(1.03);
 }
 
 .fp-pill:focus-visible {
@@ -1714,9 +1882,15 @@
 }
 
 .fp-pill.is-active {
-  background: linear-gradient(135deg, var(--fp-accent-from), var(--fp-accent-to));
-  border-color: transparent;
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.25);
   color: #fff;
+  box-shadow:
+    inset 1px 1px 1px -0.5px rgba(255, 255, 255, 0.25),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.1),
+    inset 0 0 8px 6px rgba(255, 255, 255, 0.04),
+    0 0 10px rgba(255, 255, 255, 0.08),
+    0 4px 14px rgba(0, 0, 0, 0.55);
 }
 
 .fp-pill-primary {
@@ -1769,18 +1943,58 @@
   border-style: dashed;
 }
 
-/* ─── Phone: server picker as a bottom sheet ─────────────────────────────────
+/* ─── Phone: stack the source bar ────────────────────────────────────────────
+   On a wide bar the engine toggle and the server picker sit side by side. At
+   phone width that wrap left the engine pills on one cramped half-row and the
+   server trigger on another, misaligned. Below 40rem each group takes a full
+   row of its own, the engine pills split that row evenly so "Full title" and
+   "Trailer" are equal, balanced targets, and the server picker spans the whole
+   width — a clean, predictable stack instead of two competing half-rows. */
+@media (max-width: 40rem) {
+  .fp-sourcebar {
+    gap: 0.6rem;
+  }
+
+  .fp-sourcebar > .fp-source-group {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  /* The engine group is the one WITHOUT a "Servers" label; its pills share the
+     row evenly rather than clustering at the start. */
+  .fp-sourcebar > .fp-source-group:not(:has(.fp-source-label)) .fp-pill {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  /* Keep the "Servers" label on its own line above the full-width picker so the
+     trigger truly fills the row. */
+  .fp-source-group .fp-source-label {
+    flex: 1 1 100%;
+  }
+}
+
+/* ─── Phone: server picker as a popover anchored to the trigger ──────────────
    A row of pills is either unreadable or unhittable at 375px, so below 40rem the
-   bar shows one full-width trigger and the list opens as a sheet with 44px rows.
+   bar shows one full-width trigger and the list opens as a compact popover that
+   pops directly out of that button (see SourceBar.tsx for the placement math).
    Both presentations are the same component — see useCompactViewport. */
 .fp-server-trigger {
   flex: 1 1 auto;
-  justify-content: space-between;
+  /* NOT space-between: with only a status dot and a name (the common case, when
+     no quality badge is known) that pushed the name to the far right, detached
+     from its own dot. Start-aligned with an auto margin on the name instead, so
+     dot+name always read as one group on the left and any badges collect on the
+     right. */
+  justify-content: flex-start;
   min-width: 0;
   max-width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 0.8125rem;
 }
 
 .fp-server-trigger-name {
+  margin-right: auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1795,37 +2009,54 @@
   text-transform: uppercase;
 }
 
+/* The backdrop and popover are rendered through a portal into <body> (see
+   SourceBar.tsx): `.fp-root` / `.fp-watchnow` carry `container-type: inline-size`,
+   which makes them the containing block for `position: fixed`, so a popover
+   positioned from the trigger's viewport rect would otherwise land in the wrong
+   place. The z-index sits above the site nav and the consent bar but below
+   pseudo-fullscreen (9999). The backdrop is invisible-but-present: it only needs
+   to catch the tap that dismisses the popover, not dim the screen. */
 .fp-sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 9990;
   border: 0;
-  background: rgb(0 0 0 / 0.55);
-  cursor: pointer;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+  /* iOS Safari: without this a tap on the backdrop can be swallowed by the
+     rubber-band scroll of the page behind it. */
+  touch-action: none;
 }
 
-.fp-server-sheet {
+.fp-server-popover {
   position: fixed;
-  z-index: 41;
-  inset: auto 0 0 0;
-  max-height: 70vh;
+  z-index: 9991;
+  /* left / width / top|bottom / max-height are all set inline from the measured
+     trigger rect — see place() in SourceBar.tsx. */
   overflow-y: auto;
-  padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--fp-panel-border);
-  border-radius: 1rem 1rem 0 0;
+  /* Never let the list's overscroll chain into the page behind the popover. */
+  overscroll-behavior: contain;
+  padding: 0.4rem;
+  border: 1px solid var(--fp-panel-border);
+  border-radius: 0.85rem;
   background: var(--fp-panel);
   color: var(--fp-ink);
-  animation: fp-sheet-up 220ms var(--fp-ease);
+  box-shadow:
+    0 18px 48px rgb(0 0 0 / 0.55),
+    0 0 0 1px rgb(255 255 255 / 0.04);
+  transform-origin: top center;
+  animation: fp-pop-in 150ms var(--fp-ease);
   -webkit-overflow-scrolling: touch;
 }
 
-@keyframes fp-sheet-up {
+@keyframes fp-pop-in {
   from {
-    transform: translateY(1.5rem);
+    transform: translateY(0.35rem) scale(0.98);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
@@ -1835,7 +2066,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.25rem;
+  padding: 0.15rem 0.15rem 0.25rem;
+  margin-bottom: 0.1rem;
+  border-bottom: 1px solid var(--fp-panel-border);
 }
 
 .fp-server-list {
@@ -1894,6 +2127,33 @@
   color: var(--fp-ink-dim);
 }
 
+/* The badges must never be compressed to unreadability by a long server
+   description — the description is the flexible part, the badges are not. */
+.fp-server-row > .fp-quality-badge {
+  flex: 0 0 auto;
+}
+
+/* ─── Narrow phones (≤22.5rem / 360px) ───────────────────────────────────────
+   At 320px a row carrying a name, a full-sentence description, a quality badge
+   and the "Best" badge runs out of width: measured on a 320px viewport the
+   description wrapped to two lines and pushed the row to 68px. Clamping the
+   description to two lines keeps every row a predictable height, and tightening
+   the gutters buys back the ~16px the badges need. */
+@media (max-width: 22.5rem) {
+  .fp-server-row {
+    gap: 0.45rem;
+    padding: 0.5rem 0.25rem;
+  }
+
+  .fp-server-row-meta {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
 .fp-notice {
   margin: 0;
   font-size: 0.75rem;
@@ -1906,7 +2166,7 @@
 .fp-episodes {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.85rem;
 }
 
 .fp-episodes-overlay {
@@ -1932,10 +2192,12 @@
 
 .fp-season-tabs {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.5rem;
   overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 0.15rem;
+  padding: 0 1rem 0.5rem;
+  margin-bottom: 0.75rem; /* better space between seasons and episodes */
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
 }
 
 .fp-season-tabs::-webkit-scrollbar {
@@ -1961,6 +2223,22 @@
   font-weight: 700;
 }
 
+/* Mobile: roomier season tabs and a clearer gap before the episode cards. */
+@media (max-width: 767px) {
+  .fp-episodes {
+    gap: 1.15rem;
+  }
+  .fp-season-tabs {
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+  }
+  .fp-season-tab {
+    min-height: 2.4rem;
+    padding: 0 0.95rem;
+    font-size: 0.82rem;
+  }
+}
+
 .fp-episode-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -1983,14 +2261,14 @@
   padding: 0.4rem;
   border: 1px solid transparent;
   border-radius: 0.5rem;
-  background: rgb(255 255 255 / 0.04);
+  background: rgb(0 0 0 / 0.4);
   color: inherit;
   text-align: start;
   cursor: pointer;
 }
 
 .fp-episode:hover {
-  background: rgb(255 255 255 / 0.09);
+  background: rgb(0 0 0 / 0.6);
 }
 
 .fp-episode:focus-visible {
@@ -2006,7 +2284,7 @@
   position: relative;
   flex: none;
   width: 6.5rem;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 7 / 11;
   border-radius: 0.35rem;
   overflow: hidden;
   background: #111;
@@ -2069,7 +2347,7 @@
 }
 
 .fp-episode-skeleton {
-  height: 4rem;
+  height: 10.5rem;
   border-radius: 0.5rem;
   background: linear-gradient(
     90deg,
@@ -2225,6 +2503,239 @@
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   EMBED-ENGINE CENTERED SCREEN CONTROLS
+   ══════════════════════════════════════════════════════════════════════════
+   On the embed engine the full control bar, topbar, and gesture zones are
+   removed entirely so the server's player is 100% interactive. The only
+   Filmora chrome rendered is this single centered fullscreen / minimize
+   button. It appears on hover (desktop) or tap (mobile) via the existing
+   `is-controls-visible` class on the stage, auto-hides with the same idle
+   timer, and is `pointer-events: none` while hidden — so the video
+   underneath is never blocked.
+
+   The button uses a glassmorphic pill for visibility over any background
+   without obscuring the video. It sits at z-index 6 (above the surface but
+   below any popover/menu) so it never competes with the provider's own
+   overlays that sit inside the iframe at z-index 2147483647. */
+
+.fp-embed-center-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 280ms var(--fp-ease);
+}
+
+/* Show on hover/tap — inherits the existing controlsVisible state. */
+.fp-stage.is-controls-visible .fp-embed-center-controls {
+  opacity: 1;
+}
+
+.fp-embed-center-btn {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.38);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--fp-ink);
+  cursor: pointer;
+  transition: background 180ms var(--fp-ease), transform 180ms var(--fp-ease),
+              border-color 180ms var(--fp-ease);
+  outline: none;
+}
+
+.fp-embed-center-btn:hover {
+  background: rgb(0 0 0 / 0.58);
+  border-color: rgb(255 255 255 / 0.38);
+  transform: scale(1.08);
+}
+
+.fp-embed-center-btn:focus-visible {
+  outline: 2px solid var(--fp-accent-to);
+  outline-offset: 3px;
+}
+
+.fp-embed-center-btn:active {
+  transform: scale(0.95);
+}
+
+/* When hidden, ensure the button truly cannot eat clicks on the iframe. */
+.fp-stage.is-controls-hidden .fp-embed-center-controls,
+.fp-stage.is-controls-hidden .fp-embed-center-btn {
+  pointer-events: none;
+}
+
+/* Mobile: slightly larger for thumb comfort (44px minimum). */
+@media (max-width: 40rem) {
+  .fp-embed-center-btn {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+}
+
+/* Full-screen state: the provider's own fullscreen dominates, so hide our
+   centered button while any descendant is fullscreen to avoid doubling up. */
+.fp-stage:has(:fullscreen) .fp-embed-center-controls,
+.fp-stage:has(:-webkit-full-screen) .fp-embed-center-controls {
+  display: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THIRD-PARTY FRAME: LET THE PROVIDER'S OWN CONTROLS BE CLICKED
+   ══════════════════════════════════════════════════════════════════════════
+   On the embed engine the video, its timeline, its volume slider, its quality
+   and subtitle menus and its fullscreen / expand buttons all live INSIDE the
+   iframe. Anything of ours drawn on top of that document is a click sink: the
+   pixels look like a hover card, but the pointer never reaches the player.
+
+   Two mechanisms, applied together:
+     1. `pointer-events: none` on every purely INFORMATIONAL layer (scrims,
+        toasts, HUD, ripples, subtitles, spinners, badges). They stay visible and
+        stop existing as far as the pointer is concerned.
+     2. Geometry for the layers that must stay interactive: our control bar is
+        lifted clear of `--fp-native-bar-h`, the band where the provider draws
+        its own bar. Nothing of ours overlaps it, so the bottom of the frame is
+        always the provider's.
+
+   Result: our chrome (server picker, engine switch, fullscreen, overflow) still
+   works, and every native control underneath is reachable — which is the whole
+   point of wrapping someone else's player instead of replacing it. */
+
+/* 1 ─ Informational layers never take a pointer. Listed explicitly rather than
+       with a blanket `.fp-stage * { pointer-events: none }`, which would also
+       kill our own buttons and menus. */
+.fp-stage :is(
+    .fp-toast,
+    .fp-slow,
+    .fp-hud,
+    .fp-spinner,
+    .fp-tap-ripple,
+    .fp-skip-pulse,
+    .fp-subtitles,
+    .fp-splash-scrim,
+    .fp-topbar-grip,
+    .fp-quality-badge
+  ) {
+  pointer-events: none;
+}
+
+/* 2 ─ Embed engine: lift our chrome off the provider's control band. */
+.fp-stage.is-engine-embed .fp-controls {
+  /* `bottom` instead of a transform: a transform would move the scrim's paint
+     but leave its hit box over the provider's bar in some engines. */
+  inset: auto 0 var(--fp-native-bar-h) 0;
+  /* The 2.5rem gradient padding is what used to cover the provider's bar; with
+     the bar lifted, the scrim only needs to sit behind our own row. */
+  padding-top: 1.25rem;
+  /* Do not paint a black gradient across the provider's own bar. */
+  background: linear-gradient(to top, rgb(0 0 0 / 0.72) 0%, rgb(0 0 0 / 0.35) 60%, rgb(0 0 0 / 0) 100%);
+  border-radius: 0;
+}
+
+/* Anything anchored to the bottom edge moves up by the same band. */
+.fp-stage.is-engine-embed .fp-skip-marker {
+  bottom: calc(var(--fp-native-bar-h) + var(--fp-bar-h) + 1rem);
+}
+
+/* The top bar keeps its buttons interactive but its gradient does not: the
+   provider often puts a title / server menu up there too. */
+.fp-stage.is-engine-embed .fp-topbar,
+.fp-stage.is-engine-embed.is-controls-visible .fp-topbar {
+  pointer-events: none;
+}
+.fp-stage.is-engine-embed.is-controls-visible .fp-topbar > * {
+  pointer-events: auto;
+}
+
+/* Phones: provider bars are taller (bigger touch targets) and sit above the
+   home indicator, so reserve more. */
+@media (max-width: 40rem) {
+  .fp-stage.is-engine-embed {
+    --fp-native-bar-h: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Once the controls are hidden, our chrome must not merely be transparent — it
+   must be untouchable, or a parked cursor still eats the click. This already
+   holds via the base `.fp-controls` rule; restated here because the embed engine
+   is the one place where a regression would be silent (the viewer would just
+   think "the play button does nothing"). */
+.fp-stage.is-engine-embed.is-controls-hidden :is(.fp-controls, .fp-topbar),
+.fp-stage.is-engine-embed.is-controls-hidden :is(.fp-controls, .fp-topbar) > * {
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ZOOM / FULLSCREEN: DO NOT TRAP THE FRAME
+   ══════════════════════════════════════════════════════════════════════════
+   Why the provider's fullscreen button could look dead:
+
+   • A `transform` or `filter` on an ancestor makes that ancestor a containing
+     block. Chromium and WebKit then size a fullscreened descendant against that
+     box instead of the screen, so the frame "goes fullscreen" into a 16:9
+     rectangle that looks unchanged. `.fp-surface` carries brightness()/scale()
+     from prefs, so at DEFAULT settings PlayerShell now writes no filter and no
+     transform at all (see surfaceStyle), and the rules below strip them for
+     certain while anything inside is fullscreen.
+   • `overflow: hidden` on the stage clips a frame that scales itself, and clips
+     crop-zoom past 100%.
+   • `contain` / `content-visibility` would do the same; neither is used here —
+     keep it that way. */
+
+/* Nothing between the frame and the viewport may clip or transform it. */
+.fp-stage:has(:fullscreen),
+.fp-stage:has(:-webkit-full-screen) {
+  overflow: visible;
+  aspect-ratio: auto;
+}
+
+.fp-surface:has(:fullscreen),
+.fp-surface:has(:-webkit-full-screen) {
+  /* `!important` beats the inline style PlayerShell writes for brightness/zoom.
+     Fullscreen is the one state where those preferences must not apply, because
+     the browser is painting the frame itself. */
+  transform: none !important;
+  filter: none !important;
+  transform-origin: center center;
+}
+
+/* Crop-zoom above 100% is the ONE state that needs clipping — cutting the
+   letterboxing off the edges IS the crop. Otherwise the embed stage drops the
+   clip and moves the rounded corners onto the frame itself, so nothing the
+   provider draws at the very edge of its document (a corner expand button, a
+   settings menu that opens upward) is trimmed by our box. */
+.fp-stage.is-engine-embed:not(.is-zoomed) {
+  overflow: visible;
+}
+
+.fp-stage.is-engine-embed:not(.is-zoomed) .fp-embed-frame {
+  border-radius: inherit;
+}
+
+.fp-stage.is-zoomed {
+  overflow: hidden;
+}
+
+/* A fullscreened iframe is promoted to the top layer, where our stacking
+   contexts no longer apply — but the immersive/pseudo-fullscreen stage sits at
+   z-index 9998/9999 with its own chrome. Keep that chrome out of the frame's way
+   while the provider owns the whole screen. */
+.fp-stage:has(:fullscreen) :is(.fp-controls, .fp-topbar, .fp-zone),
+.fp-stage:has(:-webkit-full-screen) :is(.fp-controls, .fp-topbar, .fp-zone) {
+  display: none;
+}
+
 /* ─────────────────────────────────────────────────── Reduced motion ─── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -2233,7 +2744,7 @@
   .fp-menu,
   .fp-upnext,
   .fp-skip-marker,
-  .fp-server-sheet,
+  .fp-server-popover,
   .fp-episode-skeleton {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;

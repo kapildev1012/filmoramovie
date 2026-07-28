@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowRight, Play, Mail, Lock } from "lucide-react";
+import { ArrowRight, Play, Mail } from "lucide-react";
 
 export interface Slide {
   img: string;
@@ -33,7 +33,7 @@ export default function AuthShowcase({ slides, error }: Props) {
       <div className="grid min-h-[calc(100vh-1.5rem)] gap-6 lg:grid-cols-[0.94fr_1.06fr]">
 
         {/* ── LEFT: cinematic showcase (always dark) ── */}
-        <div className="relative flex min-h-[600px] justify-center overflow-hidden rounded-2xl bg-black px-7 py-12 text-white sm:px-10 lg:min-h-0 lg:py-16">
+        <div className="relative hidden min-h-[600px] justify-center overflow-hidden rounded-2xl bg-black px-7 py-12 text-white sm:px-10 lg:flex lg:min-h-0 lg:py-16">
           {/* ambient glow */}
           <div
             className="pointer-events-none absolute left-1/2 top-1/3 h-[50vh] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px]"
@@ -132,11 +132,140 @@ function FocusCorners({ active }: { active: boolean }) {
 
 function AuthForm({ error }: { error?: string | null }) {
   const [notice, setNotice] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
+  const [sentTo, setSentTo] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
   const comingSoon = () =>
-    setNotice("That option is coming soon — continue with Google for now.");
+    setNotice("That option is coming soon — continue with Google or email for now.");
+
+  async function handleDevLogin() {
+    setLoading(true);
+    setFormError(null);
+    try {
+      const res = await fetch('/api/auth/dev-login', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to bypass');
+      const data = await res.json() as { success?: boolean; redirectTo?: string };
+      if (data.success && data.redirectTo) {
+        window.location.href = data.redirectTo;
+      }
+    } catch {
+      setFormError('Dev bypass failed.');
+      setLoading(false);
+    }
+  }
+
+  async function handleMagicLink(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFormError(null);
+    setNotice(null);
+
+    const form = e.currentTarget;
+    const emailInput = form.elements.namedItem('email') as HTMLInputElement;
+    const email = emailInput?.value?.trim();
+
+    if (!email) {
+      setFormError('Please enter your email address.');
+      return;
+    }
+
+    // Basic client-side validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setFormError('Please enter a valid email address.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      // The endpoint always answers with JSON, but an unhandled server error
+      // returns Astro's HTML 500 page. Parsing that used to throw into the
+      // catch below and surface as "Network error", which blamed the user's
+      // connection for a server fault.
+      let data: { error?: string; message?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        setFormError(
+          res.ok
+            ? 'Unexpected response from the server. Please try again.'
+            : `Sign-in is unavailable right now (error ${res.status}). Please try again in a moment.`
+        );
+        return;
+      }
+
+      if (res.status === 429) {
+        setFormError(data.error || 'Too many requests. Please wait a few minutes.');
+      } else if (res.status === 400) {
+        setFormError(data.error || 'Invalid email address.');
+      } else if (!res.ok) {
+        setFormError(data.error || 'Something went wrong. Please try again.');
+      } else {
+        setSentTo(email);
+        setEmailSent(true);
+      }
+    } catch {
+      // Only a genuinely failed request (offline, DNS, aborted) lands here now.
+      setFormError('Network error. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // "Check your email" state
+  if (emailSent) {
+    return (
+      <div className="mx-auto w-full max-w-[460px] text-center">
+        <div className="mx-auto grid size-16 place-items-center rounded-2xl" style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.15), rgba(168,85,247,0.15))" }}>
+          <Mail className="size-7" style={{ color: "#818cf8" }} />
+        </div>
+        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.02em] sm:text-3xl" style={{ color: "var(--color-text)" }}>
+          Check your email
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed" style={{ color: "var(--color-text-2)" }}>
+          We sent a sign-in link to{" "}
+          <span className="font-medium" style={{ color: "var(--color-text)" }}>{sentTo}</span>.
+          <br />Click the link to sign in — it expires in 10 minutes.
+        </p>
+
+        <div className="mt-8 rounded-[10px] px-5 py-4 text-left text-[13px] leading-relaxed" style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-3)" }}>
+          <p className="font-medium" style={{ color: "var(--color-text-2)" }}>Didn't receive it?</p>
+          <ul className="mt-2 list-disc space-y-1 pl-4">
+            <li>Check your spam/junk folder</li>
+            <li>Make sure you entered the correct email</li>
+            <li>Wait a few minutes — emails can take up to 2 minutes to arrive</li>
+          </ul>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => { setEmailSent(false); setFormError(null); }}
+          className="mt-6 text-sm font-medium underline underline-offset-2 transition-opacity hover:opacity-80"
+          style={{ color: "var(--color-text-2)" }}
+        >
+          Use a different email
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-[460px]">
+      <div className="mb-8 flex justify-center lg:hidden">
+        <a href="/" className="flex items-center gap-2.5 text-xl font-bold tracking-tight" style={{ color: "var(--color-text)" }}>
+          <span className="grid size-8 place-items-center rounded-lg" style={{ background: "linear-gradient(135deg,#6366f1,#a855f7)" }}>
+            <Play className="size-4 fill-white text-white" />
+          </span>
+          Filmora
+        </a>
+      </div>
       <div className="text-center">
         <h1
           className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl"
@@ -149,6 +278,17 @@ function AuthForm({ error }: { error?: string | null }) {
         </p>
       </div>
 
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          onClick={handleDevLogin}
+          disabled={loading}
+          className="mt-4 flex h-10 w-full items-center justify-center rounded-[8px] border border-dashed border-indigo-500/50 bg-indigo-500/10 text-sm font-semibold text-indigo-400 transition-colors hover:bg-indigo-500/20"
+        >
+          {loading ? <Spinner /> : '🚀 One-Click Dev Bypass'}
+        </button>
+      )}
+
       {error && (
         <div
           className="mt-6 flex items-center gap-2 rounded-[10px] px-4 py-3 text-sm"
@@ -157,6 +297,17 @@ function AuthForm({ error }: { error?: string | null }) {
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           {error}
+        </div>
+      )}
+
+      {formError && (
+        <div
+          className="mt-6 flex items-center gap-2 rounded-[10px] px-4 py-3 text-sm"
+          role="alert"
+          style={{ background: "rgba(238,68,68,0.08)", border: "1px solid rgba(238,68,68,0.25)", color: "var(--color-error)" }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+          {formError}
         </div>
       )}
 
@@ -181,57 +332,51 @@ function AuthForm({ error }: { error?: string | null }) {
           <GoogleIcon />
           <span className="whitespace-nowrap">Continue with Google</span>
         </a>
-        {/* Apple — UI (no backend yet) */}
-        <button
-          type="button"
-          onClick={comingSoon}
+        {/* Apple */}
+        <a
+          href="/api/auth/apple"
           className="flex h-11 items-center justify-center gap-2 rounded-[8px] px-3 text-sm font-medium leading-none transition-colors"
           style={{ border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)" }}
         >
           <AppleIcon />
           <span className="whitespace-nowrap">Continue with Apple</span>
-        </button>
+        </a>
       </div>
 
       {/* Divider */}
       <div className="my-7 flex items-center gap-4 text-sm" style={{ color: "var(--color-text-3)" }}>
         <div className="h-px flex-1" style={{ background: "var(--color-border)" }} />
-        or sign in with email
+        or continue with email
         <div className="h-px flex-1" style={{ background: "var(--color-border)" }} />
       </div>
 
-      {/* Email / password */}
-      <form
-        className="space-y-4 text-left"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setNotice("Email sign-in is coming soon — please continue with Google for now.");
-        }}
-      >
+      {/* Magic link email form */}
+      <form className="space-y-4 text-left" onSubmit={handleMagicLink}>
         <Field icon={<Mail className="size-4" />} label="Email" type="email" name="email" placeholder="you@example.com" />
-        <Field icon={<Lock className="size-4" />} label="Password" type="password" name="password" placeholder="••••••••" />
-
-        <div className="flex items-center justify-between text-[13px]" style={{ color: "var(--color-text-3)" }}>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" className="size-3.5 rounded-[3px] accent-[#6366f1]" />
-            Remember me
-          </label>
-          <button type="button" onClick={comingSoon} className="font-medium underline underline-offset-2">
-            Forgot password?
-          </button>
-        </div>
 
         <button
           type="submit"
-          className="mt-2 flex h-12 w-full items-center justify-center rounded-[10px] text-base font-semibold transition-opacity hover:opacity-90"
+          disabled={loading}
+          className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-[10px] text-base font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
           style={{ background: "linear-gradient(135deg,#6366f1,#a855f7)", color: "#fff" }}
         >
-          Sign in
+          {loading ? (
+            <>
+              <Spinner />
+              Sending link…
+            </>
+          ) : (
+            <>
+              <Mail className="size-4" />
+              Send magic link
+            </>
+          )}
         </button>
       </form>
 
-      <p className="mt-6 text-center text-[13px]" style={{ color: "var(--color-text-3)" }}>
-        New to Filmora? Signing in with Google creates your account automatically.
+      <p className="mt-6 text-center text-[13px] leading-relaxed" style={{ color: "var(--color-text-3)" }}>
+        No password needed — we'll email you a secure sign-in link.
+        <br />New to Filmora? Signing in creates your account automatically.
       </p>
 
       <p className="mt-4 text-center text-xs leading-4" style={{ color: "var(--color-text-3)" }}>
@@ -241,6 +386,15 @@ function AuthForm({ error }: { error?: string | null }) {
         <a href="/privacy" className="font-medium underline underline-offset-2" style={{ color: "var(--color-text-2)" }}>Privacy Policy</a>.
       </p>
     </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    </svg>
   );
 }
 

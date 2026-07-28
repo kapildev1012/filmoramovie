@@ -37,6 +37,16 @@ export interface PlayerPrefs {
   subtitleBackdrop: SubtitleBackdrop;
   /** Auto-play the next episode when one finishes. */
   autoplayNext: boolean;
+  /**
+   * Preferred video quality as a vertical resolution (e.g. 720), or null for
+   * "highest available / adaptive".
+   *
+   * Stored as a HEIGHT rather than a level index because indices differ between
+   * titles and even between renditions of the same title — a remembered index
+   * would silently mean a different quality on the next video. Height is the only
+   * form of this preference that survives a source change.
+   */
+  preferredQualityHeight: number | null;
 }
 
 export const DEFAULT_PREFS: PlayerPrefs = {
@@ -52,6 +62,9 @@ export const DEFAULT_PREFS: PlayerPrefs = {
   subtitleSize: 'medium',
   subtitleBackdrop: 'shadow',
   autoplayNext: true,
+  // null = "highest the source can deliver". This is the product default; a
+  // viewer who pins a lower rendition overrides it and that choice persists.
+  preferredQualityHeight: null,
 };
 
 export const BRIGHTNESS_MIN = 0.3;
@@ -91,6 +104,10 @@ export function readPrefs(): PlayerPrefs {
       subtitleSize: isSize(p.subtitleSize) ? p.subtitleSize : 'medium',
       subtitleBackdrop: isBackdrop(p.subtitleBackdrop) ? p.subtitleBackdrop : 'shadow',
       autoplayNext: p.autoplayNext !== false,
+      preferredQualityHeight:
+        Number.isFinite(Number(p.preferredQualityHeight)) && Number(p.preferredQualityHeight) > 0
+          ? Number(p.preferredQualityHeight)
+          : null,
     };
   } catch {
     return DEFAULT_PREFS;

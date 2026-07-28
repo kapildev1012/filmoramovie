@@ -47,14 +47,13 @@ import { resolveTrack } from '../../../lib/player/format';
 import type { PlayerT } from '../../../lib/player/strings';
 
 /**
- * Idle delay before the control bar (volume, captions, full screen, everything)
- * fades. 1s by product decision — much snappier than Netflix's ~3s, so the
- * picture is clear almost immediately after the viewer stops moving.
+ * Idle delay before the control chrome (top bar + Fullscreen) fades. Set to 1s
+ * per product spec: tap to reveal, and it vanishes a second later so the picture
+ * is clear almost immediately.
  *
- * At this speed one extra rule is essential: resting the cursor ON the control
- * bar must not make it disappear from under the pointer. `chromeHover` below
- * holds it open for as long as the pointer is over the chrome, alongside the
- * existing holds for paused / buffering / ended / offline / scrubbing / open menu.
+ * `chromeHover` below holds it open for as long as the pointer is over the
+ * chrome, alongside the existing holds for paused / buffering / ended / offline
+ * / scrubbing / open menu.
  */
 const IDLE_MS = 1000;
 /** Rapid play/pause taps inside this window collapse into one command. */
@@ -134,6 +133,12 @@ export interface PlayerApi {
   cycleRate: (direction: 1 | -1) => void;
   selectAudio: (id: string) => void;
   selectText: (id: string | null) => void;
+  /**
+   * Pin a video rendition by its id, or pass `null` to return to adaptive
+   * ("Auto") selection. The choice is remembered as a resolution height, so it
+   * carries across episodes and sources.
+   */
+  selectQuality: (id: string | null) => void;
   /** Cycle subtitles: off -> remembered/first -> off (the `c` shortcut). */
   toggleSubtitles: () => void;
   setBrightness: (value: number) => void;
@@ -146,8 +151,7 @@ export interface PlayerApi {
   wake: () => void;
   /**
    * Hold the controls open while the pointer is over the chrome. Needed because
-   * the idle delay is 1s: without it, resting the cursor on a button could make
-   * that button fade away under the pointer.
+   * even at 3s idle, a cursor resting on a button should never watch it fade.
    */
   holdChrome: (hovering: boolean) => void;
   /** Thumbnail for a scrub position, when the engine can produce one. */
@@ -237,6 +241,27 @@ export function usePlayer({
     announceTimer.current = window.setTimeout(() => setAnnouncement(''), 1200);
   }, []);
 
+  // ── Adapter pre-warming ────────────────────────────────────────────────────
+  // Dynamic imports in `boot()` below only fire after the viewer presses Play.
+  // Pre-fetching the module we will most likely need means the chunk is already
+  // in the browser's module cache when that import runs, turning a network round-
+  // trip into a synchronous resolve. This shaves 100-300ms off time-to-first-frame
+  // on typical connections.
+  const prewarmed = useRef(false);
+  useEffect(() => {
+    if (prewarmed.current) return;
+    prewarmed.current = true;
+    // Determine which adapter is most likely needed before the viewer clicks Play.
+    // For the embed engine (the overwhelming default), the adapter is tiny (~3KB),
+    // but for html5 it bundles hls.js (~150KB). Either way, one idle-priority
+    // import warms the module cache.
+    if (source === null) {
+      // No source yet — the viewer hasn't started. Pre-warm based on the engine
+      // the caller will most likely pick.
+      void import('../../../lib/player/adapters/embed');
+    }
+  }, [source]);
+
   // ── Engine lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
     const host = hostRef.current;
@@ -286,7 +311,14 @@ export function usePlayer({
       // a muted-by-choice viewer never gets a burst of sound. `prefs.volume`
       // defaults to 1 (full) and is only lower when the viewer previously chose
       // a lower level — see DEFAULT_PREFS / readPrefs.
-      adapter.setVolume(prefs.volume, prefs.muted);
+      //
+      // FULL VOLUME ON START (product decision): a level of 0 that is NOT an
+      // explicit mute is treated as "never chosen" and opened at 100%, so a
+      // title can never begin silently while the mute button reads "unmuted".
+      // A deliberate 40% is still respected — silently overriding a real choice
+      // would be a worse bug than the one this guards against.
+      const startVolume = prefs.muted || prefs.volume > 0 ? prefs.volume : 1;
+      adapter.setVolume(startVolume, prefs.muted);
       if (adapter.caps.rate) adapter.setRate(prefs.rate);
       // A source only exists because the viewer asked for one (pressed Play,
       // picked an episode, switched server), so start it rather than making them
@@ -544,6 +576,50 @@ export function usePlayer({
     },
     [snapshot.textTracks, updatePrefs, wake]
   );
+
+  /**
+   * Pin a rendition, or `null` for Auto.
+   *
+   * The preference is stored as the chosen level's HEIGHT (not its id), because
+   * level ids are per-manifest: remembering "index 2" would mean 1080p on one
+   * title and 360p on the next. `null` means "highest available", which is the
+   * product default.
+   */
+  const selectQuality = useCallback(
+    (id: string | null) => {
+      adapterRef.current?.selectQuality?.(id);
+      if (id === null) {
+        updatePrefs({ preferredQualityHeight: null });
+        announce(`${t('quality')}: ${t('auto')}`);
+      } else {
+        const level = snapshot.qualityLevels.find((q) => q.id === id);
+        updatePrefs({ preferredQualityHeight: level?.height ?? null });
+        if (level) announce(`${t('quality')}: ${level.label}`);
+      }
+      wake();
+    },
+    [snapshot.qualityLevels, updatePrefs, announce, t, wake]
+  );
+
+  /**
+   * Apply the remembered quality once the renditions for a new source appear.
+   *
+   * Matching is by height, and only an EXACT height is honoured: silently
+   * substituting the nearest rendition would make the menu disagree with what is
+   * playing. With no match (or no preference) the adapter's own default stands,
+   * which is the highest rendition — see adapters/html5.ts.
+   */
+  const appliedQualityFor = useRef<string>('');
+  useEffect(() => {
+    const adapter = adapterRef.current;
+    if (!adapter?.selectQuality || snapshot.qualityLevels.length === 0) return;
+    const signature = `${sourceKey}:${snapshot.qualityLevels.map((q) => q.id).join(',')}`;
+    if (appliedQualityFor.current === signature) return;
+    appliedQualityFor.current = signature;
+    if (prefs.preferredQualityHeight === null) return; // highest / adaptive
+    const wanted = snapshot.qualityLevels.find((q) => q.height === prefs.preferredQualityHeight);
+    if (wanted && !wanted.active) adapter.selectQuality(wanted.id);
+  }, [snapshot.qualityLevels, prefs.preferredQualityHeight, sourceKey]);
 
   const toggleSubtitles = useCallback(() => {
     if (!caps.textTracks) return;
@@ -856,6 +932,7 @@ export function usePlayer({
     cycleRate,
     selectAudio,
     selectText,
+    selectQuality,
     toggleSubtitles,
     setBrightness,
     setZoom,

@@ -1,6 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import {
+  Component,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  lazy,
+  Suspense,
+  type ReactNode,
+} from 'react';
 
 /**
  * The WebGL gallery (three.js + @react-three/fiber + drei) is ~870 kB of
@@ -23,39 +32,121 @@ interface Props {
 
 // Unsplash sample images matching the demo
 const DEMO_IMAGES = [
-  {
-    src: 'https://images.unsplash.com/photo-1741332966416-414d8a5b8887?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw2fHx8ZW58MHx8fHx8',
-    alt: 'Image 1',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1754769440490-2eb64d715775?q=80&w=1113&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    alt: 'Image 2',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1758640920659-0bb864175983?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwzNHx8fGVufDB8fHx8fA%3D%3D',
-    alt: 'Image 3',
-  },
-  {
-    src: 'https://plus.unsplash.com/premium_photo-1758367454070-731d3cc11774?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw0MXx8fGVufDB8fHx8fA%3D%3D',
-    alt: 'Image 4',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1746023841657-e5cd7cc90d2c?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw0Nnx8fGVufDB8fHx8fA%3D%3D',
-    alt: 'Image 5',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1741715661559-6149723ea89a?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw1MHx8fGVufDB8fHx8fA%3D%3D',
-    alt: 'Image 6',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1725878746053-407492aa4034?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw1OHx8fGVufDB8fHx8fA%3D%3D',
-    alt: 'Image 7',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1752588975168-d2d7965a6d64?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw2M3x8fGVufDB8fHx8fA%3D%3D',
-    alt: 'Image 8',
-  },
+  'https://images.unsplash.com/photo-1741332966416-414d8a5b8887?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw2fHx8ZW58MHx8fHx8',
+  'https://images.unsplash.com/photo-1754769440490-2eb64d715775?q=80&w=1113&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+  'https://images.unsplash.com/photo-1758640920659-0bb864175983?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwzNHx8fGVufDB8fHx8fA%3D%3D',
+  'https://plus.unsplash.com/premium_photo-1758367454070-731d3cc11774?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw0MXx8fGVufDB8fHx8fA%3D%3D',
+  'https://images.unsplash.com/photo-1746023841657-e5cd7cc90d2c?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw0Nnx8fGVufDB8fHx8fA%3D%3D',
+  'https://images.unsplash.com/photo-1741715661559-6149723ea89a?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw1MHx8fGVufDB8fHx8fA%3D%3D',
+  'https://images.unsplash.com/photo-1725878746053-407492aa4034?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw1OHx8fGVufDB8fHx8fA%3D%3D',
+  'https://images.unsplash.com/photo-1752588975168-d2d7965a6d64?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHw2M3x8fGVufDB8fHx8fA%3D%3D',
 ];
+
+/**
+ * WebGL textures must be fetched with CORS (three's loaders set
+ * `crossOrigin = 'anonymous'`), but the very same URLs are also rendered as
+ * plain `<img>` elsewhere on the page — CinematicGallery gets handed the exact
+ * same list, and movie/series pages show the same backdrops in their hero. A
+ * plain `<img>` response is cached *without* CORS, and whichever request lands
+ * first wins the cache entry: when the plain `<img>` wins, three's request is
+ * served the cached opaque response, fails the CORS check ("No
+ * 'Access-Control-Allow-Origin' header is present" even though the CDN does
+ * send it), and `useTexture` throws during render — which tore down the whole
+ * island, so the section vanished from the page entirely.
+ *
+ * Adding a query parameter gives the texture request its own cache entry, so it
+ * can never be served the poisoned non-CORS response. Both image hosts we use
+ * (image.tmdb.org and images.unsplash.com) ignore unknown query params.
+ */
+function toTextureUrl(src: string): string {
+  if (!/^https?:\/\//i.test(src)) return src;
+  return src + (src.includes('?') ? '&' : '?') + 'fgtex=1';
+}
+
+/**
+ * Load the candidate textures as CORS images up front and keep only the ones
+ * that actually decode. `useTexture` suspends and then *throws* on a failed
+ * load, so by the time the canvas mounts every URL it is given is known-good
+ * and already warm in the HTTP cache.
+ */
+function useCorsReadyImages(sources: string[]): string[] | null {
+  const key = sources.join('|');
+  const [ready, setReady] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(null);
+
+    const probe = (src: string) =>
+      new Promise<string | null>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.decoding = 'async';
+        img.onload = () => resolve(src);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+
+    Promise.all(sources.map(probe)).then((results) => {
+      if (cancelled) return;
+      setReady(results.filter((src): src is string => src !== null));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return ready;
+}
+
+/**
+ * A WebGL context can fail for reasons we do not control (blocklisted driver,
+ * too many live contexts, a texture that 404s mid-flight). Without a boundary
+ * React unmounts the island and the section disappears; with one the section
+ * keeps its static fallback, exactly like the footer always being there.
+ */
+class GalleryBoundary extends Component<
+  { onError: () => void; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.warn('[FeaturedGallery] WebGL gallery unavailable, using fallback', error);
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/**
+ * Zero-JavaScript, zero-WebGL backdrop. Rendered server-side and kept on screen
+ * until (and unless) the 3D canvas takes over, so the section is never an empty
+ * black band on any page or any device.
+ */
+function StaticStrip({ images }: { images: string[] }) {
+  const strip = images.length ? images : DEMO_IMAGES;
+  const doubled = [...strip, ...strip];
+
+  return (
+    <div className="fg-strip" aria-hidden="true">
+      <div className="fg-strip-track">
+        {doubled.map((src, i) => (
+          <img key={`${src}-${i}`} src={src} alt="" loading="lazy" decoding="async" />
+        ))}
+      </div>
+      <div className="fg-strip-veil" />
+    </div>
+  );
+}
 
 /**
  * FeaturedGallery — cinematic 3D gallery section with centred headline.
@@ -89,6 +180,7 @@ export default function FeaturedGallery({ images }: Props) {
   // what keeps three.js off the navigation critical path.
   const sectionRef = useRef<HTMLElement | null>(null);
   const [inView, setInView] = useState(false);
+  const [webglFailed, setWebglFailed] = useState(false);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -109,15 +201,31 @@ export default function FeaturedGallery({ images }: Props) {
     return () => io.disconnect();
   }, []);
 
-  // Convert plain string URLs to the { src, alt } format the gallery expects.
-  const galleryImages =
-    images && images.length
-      ? images.map((src, i) => ({ src, alt: `Gallery image ${i + 1}` }))
-      : DEMO_IMAGES;
+  // Plain URLs for the static strip (no CORS needed, shares the browser cache
+  // with the rest of the page) and separate CORS-scoped URLs for the textures.
+  const plainSources = useMemo(() => {
+    const provided = (images ?? []).filter(Boolean).slice(0, 8);
+    return provided.length ? provided : DEMO_IMAGES;
+  }, [images]);
+
+  const textureCandidates = useMemo(
+    () => plainSources.map(toTextureUrl),
+    [plainSources]
+  );
+
+  // Don't even probe the network until the section is on approach.
+  const readyTextures = useCorsReadyImages(inView ? textureCandidates : []);
+  const canUseWebgl = !webglFailed && inView && !!readyTextures && readyTextures.length > 0;
+
+  const galleryImages = useMemo(
+    () => (readyTextures ?? []).map((src, i) => ({ src, alt: `Gallery image ${i + 1}` })),
+    [readyTextures]
+  );
 
   return (
     <section
       ref={sectionRef}
+      className="featured-gallery"
       style={{
         position: 'relative',
         width: '100%',
@@ -128,19 +236,35 @@ export default function FeaturedGallery({ images }: Props) {
       }}
       aria-label="Featured gallery"
     >
+      <style>{FG_CSS}</style>
+
+      {/* Always-present backdrop. Hidden (not unmounted) once WebGL is live so
+          the handover is a cross-fade rather than a flash of black. */}
+      <div
+        className={canUseWebgl ? 'fg-static is-hidden' : 'fg-static'}
+        style={{ position: 'absolute', inset: 0 }}
+      >
+        <StaticStrip images={plainSources} />
+      </div>
+
       {/* 3D gallery fills the entire section — mounted on approach, not on load */}
-      {inView && (
-        <Suspense fallback={null}>
-          <InfiniteGallery
-            images={galleryImages}
-            speed={isMobile ? 0.9 : 1.2}
-            zSpacing={3}
-            // 12 planes in flight is a desktop budget; 6 keeps phones smooth.
-            visibleCount={isMobile ? 6 : 12}
-            falloff={isMobile ? { near: 0.8, far: 9 } : { near: 0.8, far: 14 }}
-            className="h-full w-full rounded-lg overflow-hidden"
-          />
-        </Suspense>
+      {canUseWebgl && (
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <GalleryBoundary onError={() => setWebglFailed(true)}>
+            <Suspense fallback={null}>
+              <InfiniteGallery
+                images={galleryImages}
+                speed={isMobile ? 0.9 : 1.2}
+                zSpacing={3}
+                // 12 planes in flight is a desktop budget; 6 keeps phones smooth.
+                visibleCount={isMobile ? 6 : 12}
+                falloff={isMobile ? { near: 0.8, far: 9 } : { near: 0.8, far: 14 }}
+                className=""
+                style={{ width: '100%', height: '100%' }}
+              />
+            </Suspense>
+          </GalleryBoundary>
+        </div>
       )}
 
       {/* Centred serif headline with mix-blend exclusion */}
@@ -199,3 +323,42 @@ export default function FeaturedGallery({ images }: Props) {
     </section>
   );
 }
+
+const FG_CSS = `
+.fg-static { transition: opacity 600ms ease; opacity: 1; }
+.fg-static.is-hidden { opacity: 0; pointer-events: none; }
+.fg-strip { position: absolute; inset: 0; overflow: hidden; }
+.fg-strip-track {
+  display: flex;
+  gap: 1rem;
+  height: 100%;
+  align-items: center;
+  padding: 0 1rem;
+  width: max-content;
+  animation: fg-drift 48s linear infinite;
+}
+.fg-strip-track img {
+  height: 62%;
+  width: auto;
+  max-width: none;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 10px;
+  opacity: 0.5;
+  filter: saturate(0.85);
+}
+.fg-strip-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% 50%, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.75) 70%, #000 100%),
+    linear-gradient(90deg, #000 0%, rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, #000 100%);
+}
+@keyframes fg-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fg-strip-track { animation: none; }
+}
+`;

@@ -14,6 +14,7 @@
 
 import {
   BrightnessIcon,
+  CheckIcon,
   FitIcon,
   GestureIcon,
   NextIcon,
@@ -25,6 +26,7 @@ import {
   ZoomOutIcon,
 } from './Icons';
 import { BRIGHTNESS_MAX, BRIGHTNESS_MIN, RATES, ZOOM_MAX, ZOOM_MIN } from '../../../lib/player/prefs';
+import type { QualityLevel } from '../../../lib/player/types';
 import type { PlayerT } from '../../../lib/player/strings';
 
 interface OverflowMenuProps {
@@ -50,6 +52,20 @@ interface OverflowMenuProps {
     onPrev: () => void;
     onNext: () => void;
   } | null;
+  /**
+   * Video quality. Present only when the engine can actually enumerate
+   * renditions (first-party HLS). The third-party iframe engine cannot — the
+   * renditions are chosen inside a cross-origin document — so `null` here means
+   * "render the honest explanation instead of a menu that cannot act".
+   */
+  quality?: {
+    levels: QualityLevel[];
+    /** True while ABR is choosing; false when a rendition is pinned. */
+    auto: boolean;
+    onSelect: (id: string | null) => void;
+  } | null;
+  /** True for the embed engine, where quality is not ours to set. */
+  qualityManagedExternally?: boolean;
   onBrightness: (value: number) => void;
   onZoom: (value: number) => void;
   onToggleGestures: () => void;
@@ -68,6 +84,8 @@ export default function OverflowMenu({
   canPip,
   speed = null,
   episodeNav = null,
+  quality = null,
+  qualityManagedExternally = false,
   onBrightness,
   onZoom,
   onToggleGestures,
@@ -138,6 +156,64 @@ export default function OverflowMenu({
         </div>
       )}
 
+      {/* ── Video quality ──
+          Highest is the default (the html5 adapter pins the top rendition on
+          load), and this is where a viewer on a slow line lowers it. Rendered at
+          EVERY width — mobile and desktop reach it through the same "More" sheet,
+          so neither platform has quality control the other lacks.
+
+          On the embed engine there is nothing to list: the provider's own player
+          picks the rendition inside a cross-origin document. We say so rather
+          than drawing a menu that cannot act. */}
+      {quality && quality.levels.length > 0 && (
+        <div className="fp-menu-group">
+          <p className="fp-menu-subtitle" id="fp-of-quality">
+            {t('quality')}
+          </p>
+          <ul className="fp-menu-list" role="menu" aria-labelledby="fp-of-quality">
+            <li>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={quality.auto}
+                className={`fp-menu-row${quality.auto ? ' is-active' : ''}`}
+                onClick={() => quality.onSelect(null)}
+              >
+                <span className="fp-menu-check" aria-hidden="true">
+                  {quality.auto && <CheckIcon size={16} />}
+                </span>
+                <span className="fp-menu-label">{t('auto')}</span>
+              </button>
+            </li>
+            {quality.levels.map((level) => (
+              <li key={level.id}>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={level.active}
+                  className={`fp-menu-row${level.active ? ' is-active' : ''}`}
+                  onClick={() => quality.onSelect(level.id)}
+                >
+                  <span className="fp-menu-check" aria-hidden="true">
+                    {level.active && <CheckIcon size={16} />}
+                  </span>
+                  <span className="fp-menu-label">{level.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {qualityManagedExternally && (
+        <div className="fp-menu-group">
+          <p className="fp-menu-subtitle">{t('quality')}</p>
+          <p className="fp-menu-note">
+            <span>{t('qualityOnServerHint')}</span>
+          </p>
+        </div>
+      )}
+
       {/* Brightness is a CSS filter on our own stage, so it works on every
           engine — including the third-party iframe, where nothing else does. */}
       <div className="fp-menu-group">
@@ -187,15 +263,6 @@ export default function OverflowMenu({
               aria-label={t('zoomIn')}
             >
               <ZoomInIcon size={18} />
-            </button>
-            <button
-              type="button"
-              className="fp-btn fp-btn-sm"
-              onClick={() => onZoom(zoom > 1 ? 1 : 1.3)}
-              aria-label={zoom > 1 ? t('resetZoom') : t('fillScreen')}
-              title={zoom > 1 ? t('resetZoom') : t('fillScreen')}
-            >
-              <FitIcon size={18} />
             </button>
           </span>
         </div>

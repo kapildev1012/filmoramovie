@@ -46,6 +46,7 @@ import {
 } from 'react';
 import type { PlayerApi } from './usePlayer';
 import { SKIP_SECONDS } from './usePlayer';
+import type { Platform } from './usePlatform';
 import type { TimeMarker } from '../../../lib/player/types';
 import { formatTime } from '../../../lib/player/format';
 import type { PlayerT } from '../../../lib/player/strings';
@@ -97,6 +98,18 @@ const RIPPLE_MS = 520;
 export interface PlayerShellProps {
   api: PlayerApi;
   t: PlayerT;
+  /**
+   * Which purpose-built experience to render. The DATA and PLAYBACK are identical
+   * either way (same `api` from usePlayer); this flag only changes the
+   * presentation layer:
+   *   'mobile'  — the video takes over the screen (immersive, edge-to-edge),
+   *               swipe-down / a chevron minimizes it back into the page, menus
+   *               are thumb-reachable bottom sheets. The native-app model.
+   *   'desktop' — the player stays boxed inside the page so the surrounding
+   *               title/cast/related context stays visible; menus are
+   *               hover-revealed dropdowns; fullscreen is opt-in. The web model.
+   */
+  platform: Platform;
   title: string;
   /** Secondary line, e.g. "S2 · E4 · Episode name". */
   subtitle?: string | null;
@@ -149,6 +162,7 @@ function readRemToken(element: Element, name: string, fallbackPx: number): numbe
 export default function PlayerShell({
   api,
   t,
+  platform,
   title,
   subtitle,
   splashImage,
@@ -191,6 +205,7 @@ export default function PlayerShell({
     setRate,
     selectAudio,
     selectText,
+    selectQuality,
     toggleSubtitles,
     setBrightness,
     setZoom,
@@ -267,6 +282,63 @@ export default function PlayerShell({
 
   const compact = layout === 'compact';
   const wide = layout === 'wide';
+  const isMobile = platform === 'mobile';
+
+  // ── Mobile immersive takeover ──────────────────────────────────────────────
+  // The signature of the native-app experience: once the viewer presses Play on
+  // a phone, the SAME stage element leaves the page box and fills the screen
+  // (edge-to-edge, portrait, black around a `contain`-fit frame — exactly how the
+  // Netflix / JioHotstar apps present a title). This is a pure PRESENTATION state
+  // held here in the shell: it toggles a CSS class and locks page scroll. It does
+  // NOT touch the Fullscreen API, does NOT remount the engine, and does NOT exist
+  // on desktop — so collapsing it later keeps playback running without a hiccup.
+  const [immersive, setImmersive] = useState(false);
+  useEffect(() => {
+    // Immersive mobile takeover is intentionally disabled: the player stays a
+    // boxed 16:9 surface on every platform. The only screen adjusters are the
+    // standard Fullscreen ↔ exit button (both platforms) and the zoom control —
+    // there are no expand/minimize chevron arrows. Kept as a no-op effect so the
+    // (now dormant) immersive plumbing below keeps a stable hook order.
+    setImmersive(false);
+  }, [isMobile, started]);
+
+  // Lock the page behind the immersive stage. Its own class (not the shared
+  // `fp-noscroll` that pseudo-fullscreen uses) so the two locks never race —
+  // exiting fullscreen from inside immersive must not unlock the page.
+  useEffect(() => {
+    if (!immersive) return;
+    document.documentElement.classList.add('fp-immersive-lock');
+    return () => document.documentElement.classList.remove('fp-immersive-lock');
+  }, [immersive]);
+
+  // Swipe-down to minimize. Bound to the top bar (a grab handle sits there), well
+  // clear of the brightness/volume drag zones and the play/pause centre, so the
+  // gesture can never be confused with them. A downward drag past the threshold
+  // collapses the takeover back into the in-page box; playback continues because
+  // nothing about the source changed.
+  const swipe = useRef<{ y: number; id: number } | null>(null);
+  const onGripDown = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (!immersive) return;
+      // A press that lands on a button (back / minimize) is a click, not a swipe.
+      if ((event.target as HTMLElement).closest('button')) return;
+      swipe.current = { y: event.clientY, id: event.pointerId };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    },
+    [immersive]
+  );
+  const onGripMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const session = swipe.current;
+    if (!session || session.id !== event.pointerId) return;
+    if (event.clientY - session.y > 64) {
+      swipe.current = null;
+      setImmersive(false);
+    }
+  }, []);
+  const onGripUp = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (swipe.current?.id === event.pointerId) swipe.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }, []);
 
   // ── HUD (brightness / volume / zoom flash) ────────────────────────────────
   const [hud, setHud] = useState<{ kind: 'brightness' | 'volume' | 'zoom'; value: number } | null>(
@@ -466,13 +538,24 @@ export default function PlayerShell({
     }
   }, [snapshot.error?.kind, offline, t]);
 
-  const surfaceStyle = useMemo(
-    () => ({
-      filter: `brightness(${prefs.brightness})`,
-      transform: `scale(${prefs.zoom})`,
-    }),
-    [prefs.brightness, prefs.zoom]
-  );
+  /**
+   * Inline brightness / crop-zoom for the engine surface.
+   *
+   * DELIBERATELY EMPTY AT DEFAULTS. `filter: brightness(1)` and
+   * `transform: scale(1)` are visual no-ops but NOT layout no-ops: either one
+   * turns `.fp-surface` into a containing block, and a containing block between
+   * an <iframe> and the viewport is what makes the provider's own fullscreen
+   * button appear broken — the frame is sized against our 16:9 box instead of the
+   * screen. So the properties are only written once the viewer has actually
+   * changed something, and `.fp-surface:has(:fullscreen)` strips them again while
+   * the browser is painting the frame full-screen (see player.css).
+   */
+  const surfaceStyle = useMemo(() => {
+    const style: React.CSSProperties = {};
+    if (prefs.brightness !== 1) style.filter = `brightness(${prefs.brightness})`;
+    if (prefs.zoom !== 1) style.transform = `scale(${prefs.zoom})`;
+    return style;
+  }, [prefs.brightness, prefs.zoom]);
 
   const stageClass = [
     'fp-stage',
@@ -481,10 +564,18 @@ export default function PlayerShell({
     // this one has to position the stage fixed over the whole page (iOS Safari,
     // which refuses to fullscreen anything but a <video>).
     pseudoFullscreen ? 'is-pseudo-fullscreen' : '',
+    // Platform is the experience switch; immersive is the mobile takeover state.
+    isMobile ? 'is-mobile' : 'is-desktop',
+    immersive ? 'is-mobile-immersive' : '',
     controlsVisible ? 'is-controls-visible' : 'is-controls-hidden',
     started ? 'is-started' : 'is-idle',
     compact ? 'is-compact' : '',
     wide ? 'is-wide' : '',
+    // Crop-zoom is the only state where the stage must clip its surface; without
+    // it the stage stays unclipped so a frame that scales its own UI (the
+    // provider's zoom / fullscreen affordances) is never cut off. See the
+    // ZOOM / FULLSCREEN block in player.css.
+    prefs.zoom > 1 ? 'is-zoomed' : '',
     engine ? `is-engine-${engine}` : '',
   ]
     .filter(Boolean)
@@ -568,12 +659,12 @@ export default function PlayerShell({
           </button>
         )}
 
-        {/* Gesture / tap zones, only where WE own playback (html5 / youtube). On
-            the third-party embed engine we cannot drive the video anyway, so any
-            overlay would just sit on top of the provider's OWN controls and
-            block them — the exact "cannot control the server" problem. Render
-            nothing there, so every provider control (play/pause, seek, quality,
-            audio track, fullscreen) inside the frame is fully reachable.
+        {/* Gesture / tap zones — only where WE own playback (html5 / youtube).
+            On the embed engine no gesture overlay is rendered at all: the
+            provider's own controls (play/pause, seek, quality, audio track,
+            fullscreen) must be fully reachable without any click-sinking layer
+            on top. Screen management for the embed engine is handled by the
+            centered fullscreen/minimize buttons below instead.
 
             The three zones are equal thirds of the stage width (CSS
             percentages), so the double-tap targets stay proportional from a
@@ -592,7 +683,6 @@ export default function PlayerShell({
               onDoubleClick={(event) => event.preventDefault()}
               aria-hidden="true"
             />
-            {/* Centre tap: only where we can actually toggle playback. */}
             <div
               className="fp-zone fp-zone-centre"
               onPointerUp={onZoneUp('centre')}
@@ -739,10 +829,20 @@ export default function PlayerShell({
           </div>
         )}
 
-        {/* Top bar: back + title. Hidden with the controls. */}
-        {started && (
+        {/* Top bar: back + title. Hidden with the controls. On mobile it doubles
+            as the swipe-down grab area (immersive → minimized) and carries the
+            minimize / expand affordances that switch between the takeover and the
+            in-page box.
+
+            On the embed engine the top bar is NOT rendered — it would sit on top
+            of the provider's own title / server menu and eat clicks. */}
+        {started && engine !== 'embed' && (
           <div
-            className="fp-topbar"
+            className={`fp-topbar${immersive ? ' is-immersive' : ''}`}
+            onPointerDownCapture={onGripDown}
+            onPointerMove={onGripMove}
+            onPointerUp={onGripUp}
+            onPointerCancel={onGripUp}
             onPointerEnter={(event) => {
               if (event.pointerType !== 'touch') holdChrome(true);
             }}
@@ -751,6 +851,10 @@ export default function PlayerShell({
               wake();
             }}
           >
+            {/* Grab handle — the visual promise that the sheet pulls down. Only
+                while the takeover is active. */}
+            {immersive && <span className="fp-topbar-grip" aria-hidden="true" />}
+
             {onBack && (
               <button
                 type="button"
@@ -788,8 +892,33 @@ export default function PlayerShell({
         {upNext}
         {ended && endCard}
 
-        {/* ── Control bar ── */}
-        {started && !hasError && (
+        {/* ── Embed-engine centered controls ──
+            On the embed engine the full control bar, topbar, and gesture zones
+            are removed so the server's own player is fully interactive. Instead
+            we render ONLY a small fullscreen / minimize button pair dead centre
+            of the video. It appears on hover/tap (inherits the controlsVisible
+            state) and auto-hides, so the watching experience is never blocked.
+            Pointer events pass through to the iframe when the buttons are hidden. */}
+        {started && !hasError && engine === 'embed' && (
+          <div
+            className="fp-embed-center-controls"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="fp-embed-center-btn"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+              title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+            >
+              {isFullscreen ? <ExitFullscreenIcon size={22} /> : <FullscreenIcon size={22} />}
+            </button>
+          </div>
+        )}
+
+        {/* ── Control bar (non-embed engines only) ── */}
+        {started && !hasError && engine !== 'embed' && (
           <div
             ref={controlsRef}
             className="fp-controls"
@@ -926,20 +1055,21 @@ export default function PlayerShell({
                   </button>
                 )}
 
-                {/* Audio & subtitles panel. Always available: on the embed engine
-                    it explains where the tracks are instead of listing them. */}
+                {/* Audio & subtitles panel — first-party engine only. On the
+                    streaming (embed) engine the provider owns audio/subtitle
+                    selection inside its own player, so we don't draw it here. */}
                 <button
-                  ref={tracksBtn}
-                  type="button"
-                  className={`fp-btn${menu === 'tracks' ? ' is-open' : ''}`}
-                  onClick={() => setMenu(menu === 'tracks' ? null : 'tracks')}
-                  aria-label={t('audioAndSubtitles')}
-                  aria-haspopup="dialog"
-                  aria-expanded={menu === 'tracks'}
-                  title={t('audioAndSubtitles')}
-                >
-                  <AudioTrackIcon />
-                </button>
+                    ref={tracksBtn}
+                    type="button"
+                    className={`fp-btn${menu === 'tracks' ? ' is-open' : ''}`}
+                    onClick={() => setMenu(menu === 'tracks' ? null : 'tracks')}
+                    aria-label={t('audioAndSubtitles')}
+                    aria-haspopup="dialog"
+                    aria-expanded={menu === 'tracks'}
+                    title={t('audioAndSubtitles')}
+                  >
+                    <AudioTrackIcon />
+                  </button>
 
                 {caps.rate && !compact && (
                   <button
@@ -987,20 +1117,21 @@ export default function PlayerShell({
                   </button>
                 )}
 
-                {/* Overflow: the reflow target for everything the current width
-                    cannot hold. */}
-                <button
-                  ref={overflowBtn}
-                  type="button"
-                  className={`fp-btn${menu === 'overflow' ? ' is-open' : ''}`}
-                  onClick={() => setMenu(menu === 'overflow' ? null : 'overflow')}
-                  aria-label={t('more')}
-                  aria-haspopup="dialog"
-                  aria-expanded={menu === 'overflow'}
-                  title={t('more')}
-                >
-                  <MoreIcon />
-                </button>
+                {/* Overflow / settings — first-party engine only. On the
+                    streaming (embed) engine the only screen adjuster we keep is
+                    Fullscreen below (plus the edge brightness/volume gestures). */}
+                  <button
+                    ref={overflowBtn}
+                    type="button"
+                    className={`fp-btn${menu === 'overflow' ? ' is-open' : ''}`}
+                    onClick={() => setMenu(menu === 'overflow' ? null : 'overflow')}
+                    aria-label={t('more')}
+                    aria-haspopup="dialog"
+                    aria-expanded={menu === 'overflow'}
+                    title={t('more')}
+                  >
+                    <MoreIcon />
+                  </button>
 
                 <button
                   type="button"
@@ -1029,7 +1160,7 @@ export default function PlayerShell({
                 canSelectAudio={caps.audioTracks}
                 canSelectText={caps.textTracks}
                 canStyleSubtitles={caps.subtitleStyling}
-                managedExternally={engine === 'embed'}
+                managedExternally={false}
                 subtitleSize={prefs.subtitleSize}
                 subtitleBackdrop={prefs.subtitleBackdrop}
                 onSelectAudio={selectAudio}
@@ -1077,6 +1208,19 @@ export default function PlayerShell({
                       }
                     : null
                 }
+                // Quality is offered wherever the engine can enumerate
+                // renditions, at every width, so mobile and desktop have
+                // identical access. The embed engine gets the explanation.
+                quality={
+                  snapshot.qualityLevels.length > 0
+                    ? {
+                        levels: snapshot.qualityLevels,
+                        auto: snapshot.autoQuality,
+                        onSelect: selectQuality,
+                      }
+                    : null
+                }
+                qualityManagedExternally={false}
                 onBrightness={setBrightness}
                 onZoom={setZoom}
                 onToggleGestures={toggleGestures}

@@ -76,7 +76,7 @@ const galleryImages: string[] = movies
 
   {/* ── Movies-only hero carousel (Top 5 Trending Movies) ── */}
   {heroSlides.length > 0 && (
-    <HeroCarousel client:load slides={heroSlides} label="Top 5 Movies" />
+    <HeroCarousel client:load slides={heroSlides} label="Top 5 Movies" variant="page" />
   )}
 
   <div class="container browse-page">
@@ -180,20 +180,13 @@ const galleryImages: string[] = movies
     row-gap: 2rem;
   }
 
-  /* Phones: a fixed 3-up grid (2-up on the narrowest devices) keeps every card
-     the same width and the rows even — matching the search and watchlist grids.
-     Equal 1fr tracks + the poster's 2/3 aspect ratio mean identical card sizes. */
+  /* Phones: use centralized mobile.css 2-up grid (consistent with search/watchlist).
+     mobile.css forces .poster-grid to repeat(2, 1fr) at ≤767px with fluid gaps. */
   @media (max-width: 639px) {
     .poster-grid {
-      grid-template-columns: repeat(3, 1fr);
-      column-gap: 0.75rem;
-      row-gap: 1.5rem;
-    }
-  }
-  @media (max-width: 380px) {
-    .poster-grid {
       grid-template-columns: repeat(2, 1fr);
-      column-gap: 0.75rem;
+      column-gap: var(--mob-pad-x, 1rem);
+      row-gap: clamp(1rem, 3.5vw, 1.5rem);
     }
   }
 

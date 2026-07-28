@@ -267,7 +267,7 @@ const { title, viewAllHref, items, mediaType, wide = false } = Astro.props;
   @media (max-width: 767px) {
     .rail-arrow { display: none; }
     .rail-viewport::before, .rail-viewport::after { display: none; }
-    .rail-title { font-size: 0.9375rem !important; }
+    .rail-title { font-size: clamp(0.9375rem, 2.8vw, 1.125rem) !important; }
     .rail-header {
       padding-left: 0;
       padding-right: 0;
@@ -275,7 +275,7 @@ const { title, viewAllHref, items, mediaType, wide = false } = Astro.props;
     .scroll-rail {
       padding-left: 0;
       padding-right: 0;
-      gap: 0.5rem;
+      gap: clamp(0.5rem, 1.8vw, 0.75rem);
     }
   }
   @media (prefers-reduced-motion: reduce) {

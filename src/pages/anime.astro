@@ -61,7 +61,7 @@ const galleryImages: string[] = [...animeGrid, ...popular, ...topAiring]
 
   {/* ── Anime hero carousel ── */}
   {heroSlides.length > 0 && (
-    <HeroCarousel client:load slides={heroSlides} label="Top Anime" />
+    <HeroCarousel client:load slides={heroSlides} label="Top Anime" variant="page" />
   )}
 
   {/* ── Genre rails (only shown on first unfiltered page) ── */}

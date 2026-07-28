@@ -3,12 +3,10 @@
  *
  * D1 is async and has no filesystem/native driver, so every function is async
  * and takes the D1 binding as its first argument. Obtain the binding from the
- * request context:
+ * Cloudflare Workers env:
  *
- *   // .astro pages
- *   const db = Astro.locals.runtime.env.DB;
- *   // API routes
- *   export const GET: APIRoute = async ({ locals }) => { const db = locals.runtime.env.DB; ... }
+ *   import { env } from 'cloudflare:workers';
+ *   const db = (env as unknown as { DB: D1Database }).DB;
  *
  * The schema lives in migrations/0001_init.sql and is applied with
  * `wrangler d1 migrations apply filmora` — it is not applied at runtime.
@@ -341,3 +339,139 @@ export async function getSessionFromRequest(
 }
 
 export { SESSION_COOKIE };
+
+// ─── Magic Token operations ───────────────────────────────────────────────────
+
+export interface DBMagicToken {
+  id: string;
+  email: string;
+  token_hash: string;
+  expires_at: number;
+  used_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Hash a raw token with SHA-256 (WebCrypto — Workers-safe).
+ * Returns a hex string.
+ */
+export async function hashToken(raw: string): Promise<string> {
+  const data = new TextEncoder().encode(raw);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Generate a cryptographically random token (48 URL-safe chars).
+ */
+export function generateMagicToken(): string {
+  const bytes = new Uint8Array(36);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Create a magic link token for the given email.
+ * Returns the raw token (to be sent in the email link — never stored raw).
+ */
+export async function createMagicToken(db: D1Database, email: string): Promise<string> {
+  const rawToken = generateMagicToken();
+  const tokenHash = await hashToken(rawToken);
+  const id = generateId();
+  const expiresAt = Math.floor(Date.now() / 1000) + 10 * 60; // 10 minutes
+
+  await db
+    .prepare('INSERT INTO magic_tokens (id, email, token_hash, expires_at) VALUES (?, ?, ?, ?)')
+    .bind(id, email.toLowerCase(), tokenHash, expiresAt)
+    .run();
+
+  return rawToken;
+}
+
+/**
+ * Validate and consume a magic link token.
+ * Returns the email if valid, null if expired/used/not-found.
+ */
+export async function validateMagicToken(db: D1Database, rawToken: string): Promise<string | null> {
+  const tokenHash = await hashToken(rawToken);
+  const now = Math.floor(Date.now() / 1000);
+
+  const row = await db
+    .prepare('SELECT * FROM magic_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?')
+    .bind(tokenHash, now)
+    .first<DBMagicToken>();
+
+  if (!row) return null;
+
+  // Mark as used (single-use enforcement)
+  await db
+    .prepare("UPDATE magic_tokens SET used_at = datetime('now') WHERE id = ?")
+    .bind(row.id)
+    .run();
+
+  return row.email;
+}
+
+/**
+ * Count how many magic tokens have been created for an email in the last N seconds.
+ * Used for rate limiting.
+ */
+export async function countRecentTokens(
+  db: D1Database,
+  email: string,
+  windowSeconds: number
+): Promise<number> {
+  const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
+  const row = await db
+    .prepare('SELECT COUNT(*) as cnt FROM magic_tokens WHERE email = ? AND created_at > ?')
+    .bind(email.toLowerCase(), since)
+    .first<{ cnt: number }>();
+  return row?.cnt ?? 0;
+}
+
+/**
+ * Delete expired and used tokens older than 1 hour.
+ * Call periodically to keep the table small.
+ */
+export async function cleanExpiredTokens(db: D1Database): Promise<void> {
+  const cutoff = Math.floor(Date.now() / 1000) - 3600;
+  await db
+    .prepare('DELETE FROM magic_tokens WHERE expires_at < ? OR used_at IS NOT NULL')
+    .bind(cutoff)
+    .run();
+}
+
+/**
+ * Upsert a user from a magic link sign-in.
+ * If a user with this email already exists (e.g. from Google OAuth), return them.
+ * Otherwise create a new user with a placeholder google_id.
+ */
+export async function upsertMagicLinkUser(
+  db: D1Database,
+  email: string,
+  name?: string
+): Promise<DBUser> {
+  // Check if user already exists by email (could be a Google OAuth user)
+  const existing = await db
+    .prepare('SELECT * FROM users WHERE email = ?')
+    .bind(email.toLowerCase())
+    .first<DBUser>();
+
+  if (existing) return existing;
+
+  // Create new user with a unique placeholder google_id
+  const id = generateId();
+  const placeholderGoogleId = `magic_${id}`;
+  const displayName = name || email.split('@')[0] || 'User';
+
+  await db
+    .prepare('INSERT INTO users (id, google_id, email, name, avatar_url) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, placeholderGoogleId, email.toLowerCase(), displayName, null)
+    .run();
+
+  return (await getUserById(db, id))!;
+}

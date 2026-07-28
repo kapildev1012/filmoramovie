@@ -47,8 +47,32 @@ export const IMG_BASE_LG = 'https://image.tmdb.org/t/p/w780';
 /** Brand accent passed to providers that support theming (hex, no '#'). */
 const ACCENT = 'e50914';
 
+/**
+ * BEST-EFFORT "start at the highest rendition" hints appended to every provider
+ * URL.
+ *
+ * HONESTY: none of the four providers publishes a documented quality parameter,
+ * so these are conventions borrowed from the player libraries their pages are
+ * built on (player.js / JW / Plyr wrappers commonly read `quality`, and several
+ * embed front-ends read `hd`). A provider that does not recognise them ignores
+ * them — an unknown query param cannot break a page — and the real mechanism is
+ * the postMessage burst in adapters/embed.ts. Set QUALITY_HINTS_ENABLED to false
+ * to stop sending them entirely; nothing else depends on them.
+ *
+ * `max` rather than `1080`: pinning a number would CAP a 4K title at 1080p, which
+ * is the opposite of what the product wants.
+ */
+const QUALITY_HINTS_ENABLED = true;
+const QUALITY_HINTS = 'quality=max&hd=1';
+
+/** Append the shared quality hints to a provider URL that already has a query. */
+function withQualityHints(url: string): string {
+  if (!QUALITY_HINTS_ENABLED) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${QUALITY_HINTS}`;
+}
+
 /** Identifier for a streaming server/source. */
-export type EmbedServerId = 'nexstream' | 'vidlink' | 'videasy' | 'vidfast';
+export type EmbedServerId = 'vidsrcin' | 'nexstream' | 'vidlink' | 'videasy' | 'vidfast';
 
 /** How trustworthy a provider's availability probe can be. */
 export type ProbeConfidence = 'title' | 'live';
@@ -69,10 +93,15 @@ export const EMBED_SERVER_META: ReadonlyArray<{
   label: string;
   confidence: ProbeConfidence;
 }> = [
-  { id: 'nexstream', name: 'NexStream', label: 'Server 1', confidence: 'title' },
+  // Declared in curated ad-cleanliness / reliability priority (see
+  // PROVIDER_PREFERENCE in serverRanking.ts) so the "Server 1..4" labels and the
+  // registry-order tie-break both read best-first. The authoritative auto-pick
+  // is still made by rankServers(), which folds in real playback evidence.
+  { id: 'vidsrcin', name: 'VidSrc IN (Hindi)', label: 'Server 1', confidence: 'title' },
   { id: 'vidlink', name: 'VidLink', label: 'Server 2', confidence: 'title' },
-  { id: 'videasy', name: 'Videasy', label: 'Server 3', confidence: 'live' },
-  { id: 'vidfast', name: 'VidFast', label: 'Server 4', confidence: 'live' },
+  { id: 'vidfast', name: 'VidFast', label: 'Server 3', confidence: 'live' },
+  { id: 'videasy', name: 'Videasy', label: 'Server 4', confidence: 'live' },
+  { id: 'nexstream', name: 'NexStream', label: 'Server 5', confidence: 'title' },
 ];
 
 const VALID_SERVERS = new Set<string>(EMBED_SERVER_META.map((s) => s.id));
@@ -106,12 +135,20 @@ export function getEmbedApiKey(): string {
 
 /** Direct player URL for a provider, given a target. Never includes secrets. */
 function providerUrl(server: EmbedServerId, target: EmbedTarget): string {
+  return withQualityHints(providerUrlBase(server, target));
+}
+
+function providerUrlBase(server: EmbedServerId, target: EmbedTarget): string {
   const isMovie = target.kind === 'movie';
   const { id } = target;
   const s = isMovie ? '' : String((target as Extract<EmbedTarget, { kind: 'tv' }>).season);
   const e = isMovie ? '' : String((target as Extract<EmbedTarget, { kind: 'tv' }>).episode);
 
   switch (server) {
+    case 'vidsrcin':
+      return isMovie
+        ? `https://vidsrc.in/embed/movie/${id}`
+        : `https://vidsrc.in/embed/tv/${id}/${s}/${e}`;
     case 'vidlink':
       return isMovie
         ? `https://vidlink.pro/movie/${id}?primaryColor=${ACCENT}&autoplay=true&title=false`
@@ -133,6 +170,100 @@ function providerUrl(server: EmbedServerId, target: EmbedTarget): string {
       return isMovie
         ? `https://www.vidking.net/embed/movie/${id}?color=${ACCENT}&autoPlay=true`
         : `https://www.vidking.net/embed/tv/${id}/${s}/${e}?color=${ACCENT}&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+  }
+}
+
+/**
+ * Public wrapper around {@link providerUrl} for callers that need the provider's
+ * own player URL without running a probe (the status probe below, and the
+ * back-compat helpers at the bottom of this file). Server-only: it must not be
+ * imported into client code, because this module reads EMBED_API_KEY.
+ */
+export function providerPlayerUrl(server: EmbedServerId, target: EmbedTarget): string {
+  return providerUrl(server, target);
+}
+
+/**
+ * Verdict for one provider, one title — the honest translation of an HTTP
+ * status into "should the player send a viewer here?".
+ *
+ *   'ok'          2xx/3xx: the provider served its player document.
+ *   'missing'     404 / 410: this provider does not have this title. HARD fail.
+ *   'blocked'     401 / 403 / 429: the provider refused OUR ip (datacenter
+ *                 throttling). Proves nothing about the viewer's browser, so it
+ *                 is not a failure — only a demotion.
+ *   'error'       5xx.
+ *   'unreachable' DNS / TCP / TLS failure or our timeout. HARD fail.
+ */
+export type ProbeVerdict = 'ok' | 'missing' | 'blocked' | 'error' | 'unreachable';
+
+export interface ServerProbeResult {
+  server: EmbedServerId;
+  verdict: ProbeVerdict;
+  /** HTTP status, or null when the request never got an answer. */
+  status: number | null;
+  latencyMs: number | null;
+}
+
+function verdictFor(status: number): ProbeVerdict {
+  if (status >= 200 && status < 400) return 'ok';
+  if (status === 404 || status === 410) return 'missing';
+  if (status === 401 || status === 403 || status === 429) return 'blocked';
+  return 'error';
+}
+
+/**
+ * Status-only probe of one provider for one title.
+ *
+ * HEAD first (cheapest possible question: "does this document exist?"), then a
+ * GET when the provider does not implement HEAD — several of them answer 405 or
+ * 501 to HEAD while serving the same URL happily on GET, and treating that as a
+ * dead server would take a working provider away from the viewer.
+ *
+ * Unlike {@link probeServerTimed} this reports the raw status, so the browser can
+ * tell "this title is genuinely 404 here" (skip the server) apart from "the
+ * provider throttled our datacenter" (keep the server, just rank it lower).
+ */
+export async function probeServerStatus(
+  server: EmbedServerId,
+  target: EmbedTarget
+): Promise<ServerProbeResult> {
+  const url = providerUrl(server, target);
+  const startedAt = Date.now();
+
+  const attempt = async (method: 'HEAD' | 'GET'): Promise<Response> => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
+    try {
+      return await fetch(url, {
+        method,
+        signal: ac.signal,
+        redirect: 'follow',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
+        },
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  try {
+    let res = await attempt('HEAD');
+    // 405/501 (and the odd 400) mean "wrong method", not "no such title".
+    if (res.status === 405 || res.status === 501 || res.status === 400) {
+      res = await attempt('GET');
+    }
+    return {
+      server,
+      verdict: verdictFor(res.status),
+      status: res.status,
+      latencyMs: Date.now() - startedAt,
+    };
+  } catch {
+    return { server, verdict: 'unreachable', status: null, latencyMs: null };
   }
 }
 
@@ -262,12 +393,18 @@ export async function probeServerTimed(
       // vidking URL for ANY id — including 99999999 — so `sources` proves
       // nothing. `meta` is null for ids it cannot resolve, so that is the only
       // usable signal.
+      //
+      // AD / REDIRECT HARDENING: we use CodeSpecter's answer ONLY as the
+      // title-recognition signal and then point the frame at NexStream's own
+      // vidking player URL — a single, known host we can allowlist in the
+      // page CSP and reason about — rather than the opaque `sources[].url`,
+      // which can be any third-party CDN/ad host and cannot be pre-allowlisted.
       const res = await fetchWithTimeout(codespecterApiUrl(target));
       latencyMs = Date.now() - startedAt;
       if (res.ok) {
         const data = (await res.json()) as CodespecterResponse;
-        const url = data.success ? data.sources?.find((s) => s.url)?.url : undefined;
-        if (url && data.meta?.title) resolved = url;
+        const hasSource = data.success ? !!data.sources?.find((s) => s.url) : false;
+        if (hasSource && data.meta?.title) resolved = providerUrl(server, target);
       }
     } else if (server === 'vidlink') {
       // 'title' confidence: vidlink answers 5xx for ids it does not know and

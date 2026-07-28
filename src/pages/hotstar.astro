@@ -23,7 +23,7 @@ const popularMovies = pageData?.popularMovies ?? [];
 
 <Layout title="Hotstar — Top 10 · Bollywood · Sports · Star">
   {heroSlides.length > 0 && (
-    <HeroCarousel client:load slides={heroSlides} label="Hotstar Top 10" />
+    <HeroCarousel client:load slides={heroSlides} label="Hotstar Top 10" variant="page" />
   )}
 
   <div class="platform-page">

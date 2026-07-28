@@ -19,12 +19,27 @@
 // RESPONSIVE
 // Desktop / tablet: the servers sit inline in the bar with hover states.
 // Phone (≤40rem, matched with matchMedia so the markup itself differs): one
-// full-width trigger opens a bottom sheet of 44px rows — the same pattern
-// Netflix and JioHotstar use for pickers on a phone, where a row of pills would
-// be either unreadable or unhittable.
+// full-width trigger opens a POPOVER anchored to that trigger — a compact list
+// of 44px rows that pops directly out of the server button (opening upward when
+// there is more room above it, downward otherwise). This keeps the picker
+// visually attached to the control the viewer just pressed instead of sliding
+// up from the far bottom edge of the screen, which read as disconnected from the
+// button and forced a long thumb reach on tall phones.
+//
+// WHY THE POPOVER IS PORTALLED TO <body>
+// `.fp-root` and `.fp-watchnow` both declare `container-type: inline-size` (they
+// need it for the @container queries that drive the player chrome and the inline
+// episode grid). A container-type ALSO makes the element a containing block for
+// `position: fixed` descendants, so a fixed popover rendered in place would
+// resolve its coordinates against `.fp-root` rather than the viewport. Because
+// we position the popover from the trigger's getBoundingClientRect() (which is
+// viewport-relative), it MUST live in a subtree with no such containing block —
+// document.body — for those coordinates to mean what we measured. Portalling is
+// the only way to keep the container queries AND get true viewport anchoring.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckIcon, CloseIcon } from './Icons';
+import { createPortal } from 'react-dom';
+import { CheckIcon, CloseIcon, SettingsIcon } from './Icons';
 import type { EngineId } from '../../../lib/player/types';
 import type { PlayerT } from '../../../lib/player/strings';
 
@@ -59,6 +74,7 @@ interface SourceBarProps {
   onAuto?: () => void;
   checking: boolean;
   t: PlayerT;
+  variant?: 'default' | 'center';
 }
 
 /** Phone-sized viewport check. SSR-safe: false until the browser answers. */
@@ -98,13 +114,61 @@ export default function SourceBar({
   onAuto,
   checking,
   t,
+  variant = 'default',
 }: SourceBarProps) {
   const compact = useCompactViewport();
   const [sheetOpen, setSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // Viewport-relative placement for the anchored popover, recomputed from the
+  // trigger's rect whenever the popover opens and on scroll/resize while it is
+  // up. `null` until the first measurement so we never flash it at 0,0.
+  const [placement, setPlacement] = useState<{
+    left: number;
+    width: number;
+    maxHeight: number;
+    top?: number;
+    bottom?: number;
+  } | null>(null);
 
   const showEngines = available.length > 1;
   const showServers = engine === 'embed' && servers.length > 0;
+
+  // Measure the trigger and decide whether the list opens upward or downward.
+  // The player's source bar sits below the video, so there is usually more room
+  // above the button — we prefer that side and only drop down when it is
+  // genuinely tighter, clamping the list's height to whatever side we land on.
+  const place = useCallback(() => {
+    const el = triggerRef.current;
+    if (typeof window === 'undefined' || !el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+    const margin = 12;
+    const width = Math.min(360, Math.max(rect.width, 240), vw - margin * 2);
+
+    // Left-align to the trigger, then nudge back inside the viewport.
+    let left = rect.left;
+    if (left + width > vw - margin) left = vw - margin - width;
+    if (left < margin) left = margin;
+
+    const spaceAbove = rect.top - gap - margin;
+    const spaceBelow = vh - rect.bottom - gap - margin;
+    const openUp = spaceAbove >= spaceBelow;
+    const maxHeight = Math.max(160, Math.min(openUp ? spaceAbove : spaceBelow, 420));
+
+    setPlacement(
+      openUp
+        ? { left, width, maxHeight, bottom: vh - rect.top + gap }
+        : { left, width, maxHeight, top: rect.bottom + gap }
+    );
+  }, []);
+
+  const openSheet = useCallback(() => {
+    place();
+    setSheetOpen(true);
+  }, [place]);
+
 
   const close = useCallback(() => {
     setSheetOpen(false);
@@ -124,6 +188,24 @@ export default function SourceBar({
     return () => document.removeEventListener('keydown', onKey);
   }, [sheetOpen, close]);
 
+  // While the popover is open, keep it pinned to the trigger. The full-screen
+  // backdrop already swallows page scroll/touch behind it, so rather than lock
+  // the body we simply re-measure on the events that can move the trigger
+  // (orientation change, the mobile URL bar collapsing, layout reflow). The
+  // popover itself scrolls internally with `overscroll-behavior: contain`.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const reposition = () => place();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('orientationchange', reposition);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('orientationchange', reposition);
+    };
+  }, [sheetOpen, place]);
+
   if (!showEngines && !showServers) return null;
 
   const active = servers.find((s) => s.id === activeServer) ?? null;
@@ -132,6 +214,107 @@ export default function SourceBar({
     setSheetOpen(false);
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CENTER VARIANT (Minimal popover trigger for embed center controls)
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (variant === 'center') {
+    return (
+      <>
+        {showServers && (
+          <button
+            ref={triggerRef}
+            type="button"
+            className="fp-embed-center-btn"
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              sheetOpen ? close() : openSheet();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            title={t('chooseServer')}
+            aria-label={t('chooseServer')}
+          >
+            <SettingsIcon size={22} />
+          </button>
+        )}
+
+        {sheetOpen && placement && createPortal(
+          <>
+            <button
+              type="button"
+              className="fp-sheet-backdrop"
+              aria-label={t('close')}
+              onClick={close}
+            />
+            <div
+              className="fp-server-popover"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('chooseServer')}
+              style={{
+                left: placement.left,
+                width: placement.width,
+                maxHeight: placement.maxHeight,
+                ...(placement.top !== undefined
+                  ? { top: placement.top }
+                  : { bottom: placement.bottom }),
+              }}
+            >
+              <div className="fp-server-sheet-head">
+                <h3 className="fp-menu-title">{t('chooseServer')}</h3>
+                <button
+                  type="button"
+                  className="fp-btn fp-btn-sm"
+                  onClick={close}
+                  aria-label={t('close')}
+                >
+                  <CloseIcon size={18} />
+                </button>
+              </div>
+              <ul className="fp-server-list" role="menu">
+                {servers.map((server) => (
+                  <li key={server.id}>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={activeServer === server.id}
+                      className={`fp-server-row${activeServer === server.id ? ' is-active' : ''}${server.failed ? ' is-failed' : ''}`}
+                      onClick={() => pick(server.id)}
+                    >
+                      <span className="fp-menu-check" aria-hidden="true">
+                        {activeServer === server.id && <CheckIcon size={16} />}
+                      </span>
+                      <span className="fp-server-row-text">
+                        <span className="fp-server-row-name">
+                          {server.name}
+                          {(server.verified || server.live) && (
+                            <span className="fp-pill-dot" aria-hidden="true" />
+                          )}
+                        </span>
+                        <span className="fp-server-row-meta">{describe(server)}</span>
+                      </span>
+                      {server.qualityLabel && (
+                        <span className="fp-quality-badge">{server.qualityLabel}</span>
+                      )}
+                      {recommended === server.id && (
+                        <span className="fp-quality-badge is-best">{t('bestQuality')}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>,
+          document.body
+        )}
+      </>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DEFAULT VARIANT (Full width bar)
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div
       className="fp-sourcebar"
@@ -177,7 +360,35 @@ export default function SourceBar({
             </button>
           )}
 
-          {compact ? (
+          {/* Manual list: desktop shows them inline, mobile hides them behind
+              the popover trigger. */}
+          {!compact ? (
+            servers.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`fp-pill${s.id === activeServer ? ' is-active' : ''}${s.failed ? ' is-failed' : ''}`}
+                aria-pressed={s.id === activeServer}
+                onClick={() => onServer(s.id)}
+                title={
+                  recommended === s.id
+                    ? `${describe(s)} · ${t('bestQuality')}`
+                    : describe(s)
+                }
+              >
+                {(s.verified || s.live) && (
+                  <span className="fp-pill-dot" aria-hidden="true" />
+                )}
+                {s.name}
+                {s.qualityLabel && (
+                  <span className="fp-quality-badge">{s.qualityLabel}</span>
+                )}
+                {recommended === s.id && isAuto && (
+                  <span className="fp-quality-badge is-best">{t('bestQuality')}</span>
+                )}
+              </button>
+            ))
+          ) : (
             <>
               <button
                 ref={triggerRef}
@@ -185,7 +396,7 @@ export default function SourceBar({
                 className="fp-pill fp-server-trigger is-active"
                 aria-haspopup="dialog"
                 aria-expanded={sheetOpen}
-                onClick={() => setSheetOpen((open) => !open)}
+                onClick={() => (sheetOpen ? close() : openSheet())}
               >
                 {active && (active.verified || active.live) && (
                   <span className="fp-pill-dot" aria-hidden="true" />
@@ -197,7 +408,7 @@ export default function SourceBar({
                 {isAuto && <span className="fp-server-trigger-auto">{t('auto')}</span>}
               </button>
 
-              {sheetOpen && (
+              {sheetOpen && placement && createPortal(
                 <>
                   <button
                     type="button"
@@ -205,7 +416,20 @@ export default function SourceBar({
                     aria-label={t('close')}
                     onClick={close}
                   />
-                  <div className="fp-server-sheet" role="dialog" aria-label={t('chooseServer')}>
+                  <div
+                    className="fp-server-popover"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={t('chooseServer')}
+                    style={{
+                      left: placement.left,
+                      width: placement.width,
+                      maxHeight: placement.maxHeight,
+                      ...(placement.top !== undefined
+                        ? { top: placement.top }
+                        : { bottom: placement.bottom }),
+                    }}
+                  >
                     <div className="fp-server-sheet-head">
                       <h3 className="fp-menu-title">{t('chooseServer')}</h3>
                       <button
@@ -250,35 +474,10 @@ export default function SourceBar({
                       ))}
                     </ul>
                   </div>
-                </>
+                </>,
+                document.body
               )}
             </>
-          ) : (
-            servers.map((server) => (
-              <button
-                key={server.id}
-                type="button"
-                className={`fp-pill${activeServer === server.id ? ' is-active' : ''}${server.failed ? ' is-failed' : ''}`}
-                aria-pressed={activeServer === server.id}
-                onClick={() => onServer(server.id)}
-                title={
-                  recommended === server.id
-                    ? `${describe(server)} · ${t('bestQuality')}`
-                    : describe(server)
-                }
-              >
-                {(server.verified || server.live) && (
-                  <span className="fp-pill-dot" aria-hidden="true" />
-                )}
-                {server.name}
-                {server.qualityLabel && (
-                  <span className="fp-quality-badge">{server.qualityLabel}</span>
-                )}
-                {recommended === server.id && isAuto && (
-                  <span className="fp-quality-badge is-best">{t('bestQuality')}</span>
-                )}
-              </button>
-            ))
           )}
         </div>
       )}

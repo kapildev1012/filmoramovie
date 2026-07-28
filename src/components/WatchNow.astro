@@ -13,6 +13,13 @@ import WatchNowIsland from './react/player/WatchNow';
 import type { MediaSource, TimeMarker } from '../lib/player/types';
 import type { RelatedTitle } from './react/player/EndCard';
 
+// Player chrome (fp-*). Imported here rather than in Layout.astro so the ~59 kB
+// of player styles ship only on the two routes that render a player, instead of
+// being bundled into the stylesheet every page blocks first paint on. It still
+// lands after global.css (whose colour tokens it uses) because Layout — and
+// therefore global.css — is imported before this component on both pages.
+import '../styles/player.css';
+
 interface SeasonOption {
   season_number: number;
   name: string;

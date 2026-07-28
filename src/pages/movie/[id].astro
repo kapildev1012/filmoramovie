@@ -4,7 +4,7 @@ import Layout from '../../layouts/Layout.astro';
 import HeroCarousel from '../../components/react/HeroCarousel';
 import WatchNow from '../../components/WatchNow.astro';
 import MovieRail from '../../components/MovieRail.astro';
-import { CastGallery } from '../../components/ui/gallery';
+import SocialCards from '../../components/ui/card-fan-carousel';
 import { getMovieFull, getOfficialTrailerKey } from '../../lib/tmdb';
 import type { HeroSlide } from '../../lib/tmdb';
 import type { TMDBCastMember } from '../../lib/types';
@@ -64,10 +64,10 @@ const backdropUrl = movie?.backdrop_path ? `${TMDB_IMG}/w1280${movie.backdrop_pa
 const posterUrl = movie?.poster_path ? `${TMDB_IMG}/w500${movie.poster_path}` : null;
 
 const cast = credits?.cast.slice(0, 20) ?? [];
-const castPhotos = cast
+const castCards = cast
   .filter((c) => c.profile_path)
-  .slice(0, 5)
-  .map((c) => ({ src: `https://image.tmdb.org/t/p/w185${c.profile_path}`, alt: c.name, name: c.name }));
+  .slice(0, 15)
+  .map((c) => ({ imgUrl: `https://image.tmdb.org/t/p/w300${c.profile_path}`, alt: c.name }));
 const runtime = movie?.runtime
   ? `${Math.floor(movie.runtime / 60)}h ${movie.runtime % 60}m`
   : null;
@@ -88,7 +88,7 @@ const heroSlide: HeroSlide | null = movie
       rating: rating ?? 0,
       genres: (movie.genres ?? []).map((g) => g.name).slice(0, 3),
       runtime,
-      href: trailerKey ? '#trailer' : '#watch',
+      href: '#watch',
     }
   : null;
 
@@ -110,15 +110,17 @@ const galleryImages: string[] = [
 >
   <Fragment slot="head">
     {/* Resource hints for the streaming providers the player can actually pick
-         (see lib/embed.ts). Kept identical on the series page so the first frame
-         arrives just as fast for a show as for a film. vidsrc.to / 2embed.cc are
-         retired and were removed — a hint to a host we never contact only costs
-         a DNS lookup. */}
-    <link rel="dns-prefetch" href="https://www.vidking.net" />
-    <link rel="dns-prefetch" href="https://vidlink.pro" />
-    <link rel="dns-prefetch" href="https://player.videasy.net" />
-    <link rel="dns-prefetch" href="https://vidfast.pro" />
-    <link rel="dns-prefetch" href="https://api.codespecters.com" />
+         (see lib/embed.ts). Preconnect (not just dns-prefetch) saves ~100-200ms
+         per provider by completing DNS + TCP + TLS before the iframe request
+         fires. crossorigin is required for the TLS handshake to be reusable by
+         the iframe's cross-origin fetch. Kept identical on the series page. */}
+    <link rel="preconnect" href="https://www.vidking.net" crossorigin />
+    <link rel="preconnect" href="https://vidlink.pro" crossorigin />
+    <link rel="preconnect" href="https://player.videasy.net" crossorigin />
+    <link rel="preconnect" href="https://player.videasy.to" crossorigin />
+    <link rel="preconnect" href="https://vidfast.pro" crossorigin />
+    <link rel="preconnect" href="https://vidfast.vc" crossorigin />
+    <link rel="preconnect" href="https://api.codespecters.com" crossorigin />
   </Fragment>
   {error || !movie ? (
     <div class="detail-error container">
@@ -132,7 +134,7 @@ const galleryImages: string[] = [
     <article>
       {/* ── Cinematic hero — identical to the /movies browse hero ── */}
       {heroSlide && (
-        <HeroCarousel client:load slides={[heroSlide]} label={heroSlide.title} />
+        <HeroCarousel client:load slides={[heroSlide]} label={heroSlide.title} variant="detail" />
       )}
 
       <div class="detail-body container">
@@ -147,60 +149,13 @@ const galleryImages: string[] = [
           related={relatedForPlayer}
         />
 
-        {/* ── Trailer ── */}
-        {trailerKey && (
-          <section class="detail-section detail-hide-mobile" id="trailer" data-reveal aria-labelledby="trailer-heading">
-            <h2 class="detail-section-title" id="trailer-heading">Trailer</h2>
-            <div class="trailer-wrap">
-              <iframe
-                src={`https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1`}
-                title={`${movie.title} — Official Trailer`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen
-                loading="lazy"
-                class="trailer-iframe"
-              />
-            </div>
-          </section>
-        )}
 
         {/* ── Cast ── */}
-        {cast.length > 0 && (
-          <section class="detail-section detail-hide-mobile" data-reveal aria-labelledby="cast-heading">
+        {castCards.length > 0 && (
+          <section class="detail-section" data-reveal aria-labelledby="cast-heading">
             <h2 class="detail-section-title" id="cast-heading">Cast</h2>
-            {castPhotos.length > 0 && (
-              <div class="cast-gallery-mobile">
-                <CastGallery client:visible photos={castPhotos} />
-              </div>
-            )}
-            <div class="cast-grid" role="list">
-              {cast.map((member: TMDBCastMember) => (
-                <div class="cast-card" role="listitem">
-                  <div class="cast-avatar">
-                    {member.profile_path ? (
-                      <img
-                        src={`https://image.tmdb.org/t/p/w185${member.profile_path}`}
-                        alt={member.name}
-                        class="cast-avatar-img"
-                        loading="lazy"
-                        width="80"
-                        height="120"
-                      />
-                    ) : (
-                      <div class="cast-avatar-placeholder" aria-hidden="true">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                          <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <div class="cast-info">
-                    <span class="cast-name">{member.name}</span>
-                    <span class="cast-character">{member.character}</span>
-                  </div>
-                </div>
-              ))}
+            <div class="cast-fan-container w-full overflow-hidden flex justify-center">
+              <SocialCards client:load cards={castCards} />
             </div>
           </section>
         )}

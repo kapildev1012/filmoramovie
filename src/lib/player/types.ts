@@ -88,6 +88,26 @@ export interface BufferedRange {
   end: number;
 }
 
+/**
+ * One selectable video rendition.
+ *
+ * Only engines that own the media can enumerate these. The embed engine cannot
+ * and never will: the renditions are chosen inside a cross-origin document, so
+ * there is nothing to read and nothing to set. See adapters/embed.ts.
+ */
+export interface QualityLevel {
+  /** Stable id for selection — the engine's own level index, as a string. */
+  id: string;
+  /** Vertical resolution in pixels, when the manifest declares it. */
+  height: number | null;
+  /** Declared bandwidth for this rendition in bits/s. */
+  bitrate: number | null;
+  /** Display label, e.g. "1080p". */
+  label: string;
+  /** True when this is the rendition currently being rendered. */
+  active: boolean;
+}
+
 /** Chapter markers that drive Skip Intro / Skip Recap / end-card timing. */
 export interface TimeMarker {
   kind: 'intro' | 'recap' | 'credits';
@@ -116,6 +136,18 @@ export interface PlayerSnapshot {
   error: PlayerError | null;
   /** Human-readable current quality, when the engine exposes it ("1080p"). */
   quality: string | null;
+  /**
+   * Every selectable rendition, highest first. Empty when the engine cannot
+   * enumerate them (the third-party iframe never can — the renditions live in a
+   * cross-origin document).
+   */
+  qualityLevels: QualityLevel[];
+  /**
+   * True while quality is being chosen adaptively rather than pinned by the
+   * viewer. Filmora starts pinned to the highest rendition (see the html5
+   * adapter) and only returns here if the viewer picks "Auto".
+   */
+  autoQuality: boolean;
   /** Estimated bandwidth in bits/s, when known — drives the slow-network hint. */
   bandwidth: number | null;
   /** True once the engine has proven it is actually playing media. */
@@ -142,6 +174,8 @@ export const EMPTY_SNAPSHOT: PlayerSnapshot = {
   cues: [],
   error: null,
   quality: null,
+  qualityLevels: [],
+  autoQuality: false,
   bandwidth: null,
   live: false,
   autoplayBlocked: false,
@@ -257,6 +291,11 @@ export interface PlayerAdapter {
   selectAudioTrack(id: string): void;
   /** `null` turns subtitles off. */
   selectTextTrack(id: string | null): void;
+  /**
+   * Pin playback to one rendition, or pass `null` to hand quality back to
+   * adaptive selection. Only implemented by engines that own the media.
+   */
+  selectQuality?(id: string | null): void;
   requestPictureInPicture?(): void;
   /** Returns a CSS background shorthand for the thumbnail at `seconds`. */
   thumbnailAt?(seconds: number): { url: string; x: number; y: number; w: number; h: number } | null;

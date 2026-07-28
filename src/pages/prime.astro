@@ -23,7 +23,7 @@ const popularMovies = pageData?.popularMovies ?? [];
 
 <Layout title="Prime Video — Top 10 & Exclusives">
   {heroSlides.length > 0 && (
-    <HeroCarousel client:load slides={heroSlides} label="Prime Video Top 10" />
+    <HeroCarousel client:load slides={heroSlides} label="Prime Video Top 10" variant="page" />
   )}
 
   <div class="platform-page">

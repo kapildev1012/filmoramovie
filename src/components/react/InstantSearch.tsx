@@ -716,11 +716,20 @@ export default function InstantSearch({
             -webkit-overflow-scrolling: touch;
             scroll-padding-inline: 0.25rem;
           }
-          .is-tab { padding: 0.55rem 0.95rem; }
+          .is-tab { padding: clamp(0.45rem, 1.5vw, 0.6rem) clamp(0.75rem, 2.5vw, 1.1rem); }
 
-          .is-grid { grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
-          .is-people { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 0.75rem; }
-          .is-person-img { width: 68px; height: 68px; }
+          /* Exactly two cards per row on every phone, sharing the same 2-up
+             standard as the browse and watchlist grids: column gutter == screen
+             edge padding, slightly larger row gap. Card size is then identical
+             page-to-page. (The 2/3 poster ratio + normalized title/meta scale in
+             mobile.css already read well at this wider cell.) */
+          .is-grid {
+            grid-template-columns: repeat(2, 1fr);
+            column-gap: var(--mob-pad-x, 1rem);
+            row-gap: clamp(1rem, 3.5vw, 1.5rem);
+          }
+          .is-people { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: clamp(0.5rem, 2vw, 0.875rem); }
+          .is-person-img { width: clamp(60px, 18vw, 76px); height: clamp(60px, 18vw, 76px); }
           .is-section { margin-bottom: 2rem; }
           .is-section-head { margin-bottom: 0.75rem; }
 
@@ -730,7 +739,7 @@ export default function InstantSearch({
           .is-card-fav { opacity: 1; width: 36px; height: 36px; }
 
           /* Chips are the primary navigation on the idle screen — thumb-sized. */
-          .is-chip { padding: 0.55rem 1rem; }
+          .is-chip { padding: clamp(0.45rem, 1.5vw, 0.625rem) clamp(0.75rem, 2.5vw, 1.125rem); }
         }
         @media (max-width: 380px) {
           .is-grid { grid-template-columns: repeat(2, 1fr); }

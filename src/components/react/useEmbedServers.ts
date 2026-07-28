@@ -65,10 +65,10 @@ export type ServerStatus = 'idle' | 'checking' | 'ready' | 'error';
  */
 const FALLBACK_SERVERS: AvailableServer[] = (
   [
-    { id: 'nexstream', name: 'NexStream', label: 'Server 1', verified: false, online: false, confidence: 'title' },
-    { id: 'vidlink', name: 'VidLink', label: 'Server 2', verified: false, online: false, confidence: 'title' },
+    { id: 'vidlink', name: 'VidLink', label: 'Server 1', verified: false, online: false, confidence: 'title' },
+    { id: 'vidfast', name: 'VidFast', label: 'Server 2', verified: false, online: false, confidence: 'live' },
     { id: 'videasy', name: 'Videasy', label: 'Server 3', verified: false, online: false, confidence: 'live' },
-    { id: 'vidfast', name: 'VidFast', label: 'Server 4', verified: false, online: false, confidence: 'live' },
+    { id: 'nexstream', name: 'NexStream', label: 'Server 4', verified: false, online: false, confidence: 'title' },
   ] satisfies AvailableServer[]
 ).map((s) => ({
   ...s,

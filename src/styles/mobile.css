@@ -5,14 +5,16 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════
-   0. MOBILE TOKENS
+   0. MOBILE TOKENS — fluid across 360px → 600px
    ══════════════════════════════════════════════════════ */
 :root {
   --mob-nav-h:   60px;
   --mob-tab-h:   60px;
-  --mob-pad-x:   1rem;
+  /* Fluid container padding: 14px at 360px → 20px at 600px */
+  --mob-pad-x:   clamp(0.875rem, 2.5vw, 1.25rem);
   --mob-radius:  12px;
-  --mob-gap:     0.75rem;
+  /* Fluid base gap: 12px at 360px → 16px at 600px */
+  --mob-gap:     clamp(0.75rem, 2.2vw, 1rem);
 }
 
 /* ══════════════════════════════════════════════════════
@@ -81,8 +83,7 @@
   main:has(.nf-hero),
   main:has(.detail-hero) { padding-top: 0; }
 
-  /* Hero shorter on tablet */
-  .nf-hero { min-height: 56svh !important; max-height: 56svh !important; }
+  /* Hero heights live in HeroCarousel.tsx (--nf-h per variant). */
 
   /* Poster cards */
   .poster-card { min-width: 140px; max-width: 160px; }
@@ -115,11 +116,11 @@
     padding-top: 0;
   }
 
-  /* ── Home sections spacing ── */
+  /* ── Home sections spacing — fluid ── */
   .home-sections {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: clamp(1.25rem, 4vw, 2rem);
     padding-top: 0.25rem;
   }
 
@@ -174,8 +175,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: clamp(22px, 6.5vw, 28px);
+    height: clamp(22px, 6.5vw, 28px);
   }
 
   .btb-badge {
@@ -196,7 +197,7 @@
   }
 
   .btb-label {
-    font-size: 0.625rem;
+    font-size: clamp(0.5625rem, 1.7vw, 0.6875rem);
     font-weight: 600;
     letter-spacing: 0.01em;
     line-height: 1;
@@ -224,71 +225,12 @@
 
   /* ──────────────────────────────────────────
      HERO CAROUSEL
+     Layout, heights, gradients, copy and controls are all owned by
+     src/components/react/HeroCarousel.tsx (variant classes + --nf-*
+     custom properties). Nothing is overridden here — the duplicate
+     !important block that used to live in this file fought the
+     component's own mobile rules.
   ────────────────────────────────────────── */
-  .nf-hero {
-    min-height: 88svh !important;
-    max-height: 88svh !important;
-  }
-
-  /* Gradient: heavier bottom fade on portrait */
-  .nf-grad-bottom {
-    background: linear-gradient(
-      to top,
-      #000 0%,
-      rgba(0,0,0,0.92) 22%,
-      rgba(0,0,0,0.55) 50%,
-      rgba(0,0,0,0.12) 78%,
-      transparent 100%
-    ) !important;
-  }
-
-  /* Content: full width, balanced padding, clears the floating bottom bar */
-  .nf-content {
-    padding: 0 1.25rem calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 2rem) !important;
-    max-width: 100% !important;
-  }
-
-  /* Title: slightly smaller on narrow screens */
-  .nf-title {
-    font-size: clamp(1.5rem, 6.5vw, 2.25rem) !important;
-    margin-bottom: 0.5rem !important;
-  }
-
-  /* Meta pills: allow wrap, smaller gap */
-  .nf-meta {
-    gap: 0.5rem !important;
-    flex-wrap: wrap !important;
-    margin-bottom: 0.5rem !important;
-  }
-
-  /* Overview: 2 lines max on mobile, comfortable reading */
-  .nf-overview {
-    -webkit-line-clamp: 2 !important;
-    font-size: 0.875rem !important;
-    line-height: 1.5 !important;
-    margin-bottom: 1.125rem !important;
-  }
-
-  /* Action buttons: pill style, thumb-friendly */
-  .nf-actions { gap: 0.5rem !important; }
-  .nf-btn {
-    padding: 0.75rem 1.25rem !important;
-    font-size: 0.9375rem !important;
-    min-height: 48px !important;
-    border-radius: 9999px !important;
-  }
-  .nf-btn--wl {
-    width: 48px !important;
-    height: 48px !important;
-    border-radius: 50% !important;
-    padding: 0 !important;
-  }
-
-  /* Bottom strip: dots only (arrows hidden via existing rule) */
-  .nf-strip {
-    padding: 0.5rem 1.25rem 1rem !important;
-    gap: 0.5rem !important;
-  }
 
   /* ──────────────────────────────────────────
      MOVIE RAIL
@@ -298,13 +240,13 @@
   .rail-header {
     padding-left: 0;
     padding-right: 0;
-    margin-bottom: 0.625rem;
+    margin-bottom: clamp(0.5rem, 1.8vw, 0.75rem);
   }
 
-  .rail-title { font-size: 1rem !important; }
+  .rail-title { font-size: clamp(0.9375rem, 2.8vw, 1.125rem) !important; }
 
   .rail-view-all {
-    font-size: 0.75rem;
+    font-size: clamp(0.6875rem, 2vw, 0.8125rem);
     color: rgba(255,255,255,0.5);
   }
 
@@ -312,7 +254,7 @@
   .scroll-rail {
     padding-left: 0;
     padding-right: 0;
-    gap: 0.625rem;
+    gap: clamp(0.5rem, 1.8vw, 0.75rem);
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
   }
@@ -324,20 +266,21 @@
   /* Hide desktop arrows on mobile */
   .rail-arrow { display: none !important; }
 
-  /* ── Poster card sizes ── */
+  /* ── Poster card sizes — fluid across mobile (horizontal rails only;
+     grid cards fill their track and ignore these min/max widths) ── */
   .poster-card {
-    min-width: 108px;
-    max-width: 124px;
+    min-width: clamp(100px, 28vw, 140px);
+    max-width: clamp(120px, 33vw, 160px);
   }
   .poster-card-img-wrap {
     aspect-ratio: 2 / 3;
-    border-radius: 8px;
+    border-radius: clamp(6px, 2vw, 10px);
   }
   .poster-card-title {
-    font-size: 0.75rem !important;
-    margin-top: 0.375rem;
+    font-size: clamp(0.6875rem, 2.1vw, 0.8125rem) !important;
+    margin-top: clamp(0.25rem, 1vw, 0.4375rem);
   }
-  .poster-card-subtitle { font-size: 0.6875rem !important; }
+  .poster-card-subtitle { font-size: clamp(0.625rem, 1.8vw, 0.75rem) !important; }
 
   /* ──────────────────────────────────────────
      TOP 10 RAIL
@@ -394,8 +337,6 @@
   /* ──────────────────────────────────────────
      PLATFORM GRID
   ────────────────────────────────────────── */
-  /* Hide the side panel on mobile — it's a desktop widget */
-  .pg-panel { display: none !important; }
 
   /* ──────────────────────────────────────────
      BENTO CARDS (index.astro)
@@ -425,19 +366,19 @@
   .feat-head {
     padding: 0 var(--mob-pad-x);
     text-align: center;
-    margin-bottom: 1.5rem !important;
+    margin-bottom: clamp(1.25rem, 4vw, 1.75rem) !important;
   }
   .feat-title { font-size: clamp(1.375rem, 6vw, 2rem) !important; }
-  .feat-sub { font-size: 0.875rem !important; }
+  .feat-sub { font-size: clamp(0.8125rem, 2.4vw, 0.9375rem) !important; }
 
   /* ──────────────────────────────────────────
      FAQ SECTION
   ────────────────────────────────────────── */
-  .faq-block { padding: 2rem 1rem 1.5rem !important; }
-  .faq-header { margin-bottom: 1.5rem !important; }
+  .faq-block { padding: clamp(1.5rem, 5vw, 2.5rem) clamp(0.75rem, 2.5vw, 1.25rem) clamp(1.25rem, 4vw, 2rem) !important; }
+  .faq-header { margin-bottom: clamp(1rem, 4vw, 1.75rem) !important; }
 
-  .faq-title { font-size: 1.375rem !important; }
-  .faq-subtitle { font-size: 0.875rem !important; }
+  .faq-title { font-size: clamp(1.25rem, 4vw, 1.625rem) !important; }
+  .faq-subtitle { font-size: clamp(0.8125rem, 2.4vw, 0.9375rem) !important; }
 
   .faq-list { gap: 0.5rem !important; }
 
@@ -455,7 +396,7 @@
 
   /* Long questions: readable size + wrap cleanly */
   .faq-q-text {
-    font-size: 0.9rem !important;
+    font-size: clamp(0.8125rem, 2.4vw, 0.9375rem) !important;
     line-height: 1.4 !important;
   }
 
@@ -466,7 +407,7 @@
     padding: 0 1rem 1.1rem 1rem !important;
   }
   .faq-a p {
-    font-size: 0.875rem !important;
+    font-size: clamp(0.8125rem, 2.4vw, 0.9375rem) !important;
     line-height: 1.65 !important;
     margin-top: 0.6rem !important;
   }
@@ -475,8 +416,8 @@
      HOME NOTICE
   ────────────────────────────────────────── */
   .home-notice {
-    padding: 0.625rem var(--mob-pad-x);
-    font-size: 0.8125rem;
+    padding: clamp(0.5rem, 1.8vw, 0.75rem) var(--mob-pad-x);
+    font-size: clamp(0.75rem, 2.2vw, 0.875rem);
     margin: 0.5rem var(--mob-pad-x);
     border-radius: 10px;
   }
@@ -493,8 +434,21 @@
 
   /* Section column headings */
   footer p[class*="uppercase"] {
-    font-size: 0.625rem !important;
+    font-size: clamp(0.5625rem, 1.8vw, 0.6875rem) !important;
   }
+
+  /* Footer links: the live footer uses .cf-* classes (the footer .grid /
+     p[class*="uppercase"] selectors above predate it). Each .cf-col-link is
+     reset to an inline ~18px target by the global `li a` rule, which is below
+     the 44px minimum and reads cramped. Give every link a proper full-height
+     tap target and even rows. Mobile-only — desktop footer is untouched. */
+  .cf-links-grid .cf-col-link {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0.25rem 0;
+  }
+  .cf-links-grid .cf-col-list { gap: 0.125rem; }
 
   /* ──────────────────────────────────────────
      SEO STATS BAR
@@ -679,26 +633,26 @@
      (.browse-page, .poster-grid, .pagination)
   ══════════════════════════════════════════ */
   .browse-page {
-    padding-top: 1.5rem !important;
+    padding-top: clamp(1.25rem, 4vw, 2rem) !important;
     padding-bottom: 2.5rem !important;
   }
   .browse-header {
-    margin-bottom: 1.25rem !important;
-    gap: 0.5rem !important;
+    margin-bottom: clamp(1rem, 3vw, 1.5rem) !important;
+    gap: clamp(0.375rem, 1.5vw, 0.625rem) !important;
   }
   .browse-title {
-    font-size: 1.5rem !important;
+    font-size: clamp(1.25rem, 4.5vw, 1.75rem) !important;
   }
-  .browse-count { font-size: 0.8125rem !important; }
+  .browse-count { font-size: clamp(0.75rem, 2.2vw, 0.875rem) !important; }
 
   /* ── Sort / Filter controls (FilterPanel) ──
      Bottom-align the row so the "Sort by" label above the select never offsets
      it from the label-less Filters / Clear-all buttons. All controls share a
      consistent 44px tap height and even gaps — stays aligned on every phone. */
-  .browse-page .filter-panel { margin-bottom: 1.25rem !important; }
+  .browse-page .filter-panel { margin-bottom: clamp(1rem, 3vw, 1.5rem) !important; }
   .browse-page .filter-top-row {
     align-items: flex-end !important;
-    gap: 0.5rem !important;
+    gap: clamp(0.375rem, 1.5vw, 0.625rem) !important;
     flex-wrap: wrap !important;
   }
   .browse-page .filter-sort {
@@ -719,8 +673,9 @@
      the cards and each screen edge is symmetric. Cards fill their cell fully
      (overriding the rail-oriented min/max-width) → identical dimensions. */
   .browse-page .poster-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: var(--mob-pad-x) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: var(--mob-pad-x) !important;
+    row-gap: clamp(1rem, 3.5vw, 1.5rem) !important;
     justify-items: stretch !important;
     align-items: start !important;
   }
@@ -730,31 +685,49 @@
     width: 100% !important;
   }
 
-  /* Non-browse poster grids (e.g. search results) keep the compact 3-up. */
+  /* Every poster grid shares ONE 2-up layout on phones so a card is the same
+     size on every page (search results use the island's own .is-grid, tuned to
+     match). Column gutter == container edge padding → symmetric spacing to both
+     screen edges; a slightly larger row gap gives clean vertical rhythm. */
   .poster-grid {
-    grid-template-columns: repeat(3, 1fr) !important;
-    gap: 0.625rem !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: var(--mob-pad-x) !important;
+    row-gap: clamp(1rem, 3.5vw, 1.5rem) !important;
+  }
+
+  /* Uniform card text across every mobile grid (browse · search · watchlist)
+     so titles and meta read identically regardless of page. */
+  .browse-page .poster-card-title,
+  .is-card-title,
+  .wl-card-title {
+    font-size: clamp(0.75rem, 2.2vw, 0.875rem) !important;
+    line-height: 1.3 !important;
+  }
+  .browse-page .poster-card-subtitle,
+  .is-card-year,
+  .wl-card-date {
+    font-size: clamp(0.625rem, 1.8vw, 0.75rem) !important;
   }
 
   /* Pagination — compact, wraps, thumb-friendly */
   .pagination {
-    margin-top: 2rem !important;
-    gap: 0.375rem !important;
+    margin-top: clamp(1.5rem, 5vw, 2.5rem) !important;
+    gap: clamp(0.25rem, 1vw, 0.5rem) !important;
   }
   .pagination-btn {
-    padding: 0.5rem 0.875rem !important;
-    font-size: 0.8125rem !important;
+    padding: 0.5rem clamp(0.625rem, 2.5vw, 1rem) !important;
+    font-size: clamp(0.75rem, 2.2vw, 0.875rem) !important;
     min-height: 44px !important;
   }
   .pagination-pages { gap: 0.25rem !important; flex-wrap: wrap; justify-content: center; }
   .pagination-page {
-    width: 40px !important;
-    height: 40px !important;
-    font-size: 0.875rem !important;
+    width: clamp(36px, 10vw, 44px) !important;
+    height: clamp(36px, 10vw, 44px) !important;
+    font-size: clamp(0.8125rem, 2.2vw, 0.9375rem) !important;
   }
 
-  .browse-empty { padding: 3rem 1rem !important; }
-  .browse-error { padding: 3rem 1rem !important; }
+  .browse-empty { padding: clamp(2rem, 8vw, 3.5rem) 1rem !important; }
+  .browse-error { padding: clamp(2rem, 8vw, 3.5rem) 1rem !important; }
 
   /* ══════════════════════════════════════════
      DETAIL PAGES — movie/[id] · series/[id]
@@ -764,39 +737,39 @@
     padding-bottom: 2rem !important;
   }
   .detail-hero-content {
-    gap: 1.25rem !important;
+    gap: clamp(1rem, 3.5vw, 1.5rem) !important;
     padding-top: calc(var(--mob-nav-h) + 1rem) !important;
   }
   .detail-title {
     font-size: clamp(1.5rem, 6.5vw, 2.25rem) !important;
   }
-  .detail-tagline { font-size: 0.875rem !important; }
+  .detail-tagline { font-size: clamp(0.8125rem, 2.4vw, 0.9375rem) !important; }
   .detail-overview {
-    font-size: 0.9375rem !important;
-    margin-bottom: 1.25rem !important;
+    font-size: clamp(0.875rem, 2.5vw, 1rem) !important;
+    margin-bottom: clamp(1rem, 3.5vw, 1.5rem) !important;
   }
-  .detail-meta { gap: 0.5rem !important; }
+  .detail-meta { gap: clamp(0.375rem, 1.5vw, 0.625rem) !important; }
 
   /* Actions: full-width play button, wrap nicely */
   .detail-actions {
-    gap: 0.625rem !important;
-    margin-bottom: 1.25rem !important;
+    gap: clamp(0.5rem, 1.8vw, 0.75rem) !important;
+    margin-bottom: clamp(1rem, 3.5vw, 1.5rem) !important;
   }
   .detail-play-btn {
-    padding: 0.75rem 1.5rem !important;
-    font-size: 0.9375rem !important;
+    padding: clamp(0.625rem, 2vw, 0.875rem) clamp(1.25rem, 4vw, 1.75rem) !important;
+    font-size: clamp(0.875rem, 2.5vw, 1rem) !important;
     min-height: 48px !important;
   }
 
   /* Body spacing */
   .detail-body {
-    padding-top: 2rem !important;
+    padding-top: clamp(1.5rem, 5vw, 2.5rem) !important;
     padding-bottom: 2.5rem !important;
   }
-  .detail-section { margin-bottom: 2rem !important; }
+  .detail-section { margin-bottom: clamp(1.5rem, 5vw, 2.5rem) !important; }
   .detail-section-title {
-    font-size: 1.125rem !important;
-    margin-bottom: 1rem !important;
+    font-size: clamp(1rem, 3vw, 1.25rem) !important;
+    margin-bottom: clamp(0.75rem, 2.5vw, 1.125rem) !important;
   }
 
   /* Trailer — force 16:9, full width on mobile (was 75vh — too tall) */
@@ -809,12 +782,12 @@
   /* Cast grid — compact 3 across on mobile */
   .cast-grid {
     grid-template-columns: repeat(3, 1fr) !important;
-    gap: 0.5rem !important;
+    gap: clamp(0.375rem, 1.5vw, 0.625rem) !important;
   }
   .cast-card { gap: 0.375rem !important; }
   .cast-avatar { border-radius: 8px !important; }
-  .cast-name { font-size: 0.75rem !important; line-height: 1.2 !important; }
-  .cast-character { font-size: 0.6875rem !important; line-height: 1.2 !important; }
+  .cast-name { font-size: clamp(0.6875rem, 2vw, 0.8125rem) !important; line-height: 1.2 !important; }
+  .cast-character { font-size: clamp(0.625rem, 1.8vw, 0.75rem) !important; line-height: 1.2 !important; }
 
   /* Facts / credits: stack label above value */
   .detail-facts,
@@ -831,9 +804,6 @@
     margin-bottom: 0.25rem;
   }
 
-  /* Provider logos: slightly smaller */
-  .provider-logo { width: 46px !important; height: 46px !important; }
-
   /* Episodes (series) */
   .episode-number { min-width: 20px !important; }
 
@@ -847,14 +817,15 @@
     padding-top: calc(var(--mob-nav-h) + 1rem) !important;
     padding-bottom: 3rem !important;
   }
-  .search-title { font-size: 1.375rem !important; }
+  .search-title { font-size: clamp(1.25rem, 4.5vw, 1.625rem) !important; }
 
   /* ══════════════════════════════════════════
      WATCHLIST PAGE
   ══════════════════════════════════════════ */
   .watchlist-grid {
-    grid-template-columns: repeat(3, 1fr) !important;
-    gap: 0.625rem !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: var(--mob-pad-x) !important;
+    row-gap: clamp(1rem, 3.5vw, 1.5rem) !important;
   }
 
   /* ══════════════════════════════════════════
@@ -880,9 +851,9 @@
   }
   .contact-grid {
     grid-template-columns: 1fr !important;
-    gap: 1.5rem !important;
+    gap: clamp(1.25rem, 4vw, 1.75rem) !important;
   }
-  .contact-lead { font-size: 1rem !important; }
+  .contact-lead { font-size: clamp(0.9375rem, 2.8vw, 1.0625rem) !important; }
 
   /* ══════════════════════════════════════════
      ERROR PAGES — 404 · 500
@@ -900,15 +871,16 @@
     padding-bottom: 2.5rem !important;
   }
   .platform-brand {
-    padding: 1.25rem 0 1rem !important;
-    gap: 0.875rem !important;
+    padding: clamp(1rem, 3.5vw, 1.5rem) 0 clamp(0.75rem, 2.5vw, 1.125rem) !important;
+    gap: clamp(0.625rem, 2.5vw, 1rem) !important;
   }
   .platform-logo-wrap {
-    width: 48px !important;
-    height: 48px !important;
+    width: clamp(40px, 12vw, 52px) !important;
+    height: clamp(40px, 12vw, 52px) !important;
   }
-  .platform-name { font-size: 1.375rem !important; }
-  .platform-sections { padding-top: 1rem !important; }
+  .platform-name { font-size: clamp(1.125rem, 4vw, 1.5rem) !important; }
+  .platform-desc { font-size: clamp(0.75rem, 2.2vw, 0.875rem) !important; }
+  .platform-sections { padding-top: clamp(0.75rem, 2.5vw, 1.25rem) !important; }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -916,9 +888,8 @@
    ══════════════════════════════════════════════════════ */
 @media (max-width: 400px) {
   .poster-grid,
-  .watchlist-grid,
-  .people-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
+  .watchlist-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
   .cast-grid {
     grid-template-columns: repeat(3, 1fr) !important;
@@ -932,15 +903,8 @@
 @media (max-width: 380px) {
 
   :root {
-    --mob-pad-x: 0.875rem;
+    --mob-pad-x: 0.75rem;
   }
-
-  .btb-label { font-size: 0.5625rem; }
-  .btb-icon { width: 22px; height: 22px; }
-
-  .poster-card { min-width: 96px; max-width: 108px; }
-
-  .nf-btn { padding: 0.625rem 1rem !important; font-size: 0.875rem !important; }
 
   .bento-card { padding: 1rem !important; }
   .feat-title { font-size: clamp(1.25rem, 7vw, 1.75rem) !important; }

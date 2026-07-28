@@ -23,7 +23,7 @@ const popularMovies = pageData?.popularMovies ?? [];
 
 <Layout title="Netflix — Top 10 & Originals">
   {heroSlides.length > 0 && (
-    <HeroCarousel client:load slides={heroSlides} label="Netflix Top 10" />
+    <HeroCarousel client:load slides={heroSlides} label="Netflix Top 10" variant="page" />
   )}
 
   <div class="platform-page">

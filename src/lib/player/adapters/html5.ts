@@ -27,6 +27,7 @@ import {
   type PlayerCapabilities,
   type PlayerError,
   type PlayerSource,
+  type QualityLevel,
   type SnapshotSink,
   type TextTrackInfo,
 } from '../types';
@@ -203,10 +204,21 @@ export class Html5Adapter implements PlayerAdapter {
         return;
       }
       const hls = new Hls({
-        // Start conservatively so the first frames arrive fast on mobile data,
-        // then let ABR climb.
+        // HIGHEST QUALITY BY DEFAULT (product decision).
+        //
+        // `startLevel: -1` (hls.js's default) starts from a low rendition and
+        // lets ABR climb, which is why a title used to open visibly soft and
+        // sharpen a few seconds in. Filmora instead pins the FIRST segment to the
+        // highest rendition the manifest offers, then keeps ABR enabled so a
+        // genuinely slow connection can still drop down rather than stall. The
+        // viewer can pin any rendition — or return to Auto — from the quality
+        // menu (see selectQuality below).
+        //
+        // `capLevelToPlayerSize` is off for the same reason: capping to the
+        // rendered box size would make "highest available" mean "highest that
+        // fits a 400px-wide inline player", which is not what the setting says.
         startLevel: -1,
-        capLevelToPlayerSize: true,
+        capLevelToPlayerSize: false,
         maxBufferLength: 30,
         enableWorker: true,
       });
@@ -216,8 +228,16 @@ export class Html5Adapter implements PlayerAdapter {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         this.syncTracks();
+        // Pin the highest rendition for the opening segments. ABR stays enabled
+        // (see `startLevel` note above), so this raises the floor of the first
+        // frames without preventing a drop on a genuinely slow line.
+        const top = (hls.levels?.length ?? 0) - 1;
+        if (top >= 0) hls.nextLevel = top;
+        this.caps.qualityInfo = true;
+        this.publishQualityLevels();
         this.sink({ status: 'ready' });
       });
+      hls.on(Hls.Events.LEVELS_UPDATED, () => this.publishQualityLevels());
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => this.syncTracks());
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => this.syncTracks());
       hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data: { level: number }) => {
@@ -226,6 +246,9 @@ export class Html5Adapter implements PlayerAdapter {
           quality: level?.height ? `${level.height}p` : null,
           bandwidth: Math.round(hls.bandwidthEstimate || 0) || null,
         });
+        // Re-publish so the menu's tick mark follows an ABR switch, not just a
+        // manual pick.
+        this.publishQualityLevels();
       });
       hls.on(Hls.Events.ERROR, (_e, data: ErrorData) => {
         if (!data.fatal) return; // hls.js recovers non-fatal errors itself
@@ -581,6 +604,59 @@ export class Html5Adapter implements PlayerAdapter {
     }
     this.sink({ cues: [] });
     this.syncTracks();
+  }
+
+  /**
+   * Push the selectable renditions, highest first.
+   *
+   * Only meaningful for HLS: a progressive MP4 is one rendition by definition, so
+   * the list stays empty and the UI renders no quality control rather than a menu
+   * with a single dead entry.
+   */
+  private publishQualityLevels(): void {
+    const hls = this.hls;
+    if (!hls) return;
+    const levels = hls.levels ?? [];
+    if (levels.length < 2) {
+      this.sink({ qualityLevels: [], autoQuality: false });
+      return;
+    }
+    // `autoLevelEnabled` is hls.js's own view of whether ABR is in charge, which
+    // is the honest source for the "Auto" tick — it accounts for ABR being
+    // disabled by a manual pin as well as by config.
+    const auto = hls.autoLevelEnabled;
+    const current = hls.currentLevel;
+    const list: QualityLevel[] = levels
+      .map((level, index) => ({
+        id: String(index),
+        height: level.height ?? null,
+        bitrate: level.bitrate ?? null,
+        label: level.height ? `${level.height}p` : `${Math.round((level.bitrate ?? 0) / 1000)}kbps`,
+        // While ABR is driving, no manual entry is "active" — Auto is.
+        active: !auto && index === current,
+      }))
+      .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || (b.bitrate ?? 0) - (a.bitrate ?? 0));
+    this.sink({ qualityLevels: list, autoQuality: auto });
+  }
+
+  /**
+   * Pin a rendition, or pass `null` to return to adaptive selection.
+   *
+   * `currentLevel` is used rather than `nextLevel` for a manual pick so the change
+   * is visible immediately (hls.js flushes the buffer) — a viewer who drops to
+   * 480p on a slow line wants relief now, not after the current buffer drains.
+   */
+  selectQuality(id: string | null): void {
+    const hls = this.hls;
+    if (!hls) return;
+    if (id === null) {
+      hls.currentLevel = -1; // -1 re-enables ABR
+    } else {
+      const index = Number(id);
+      if (!Number.isInteger(index) || index < 0 || index >= (hls.levels?.length ?? 0)) return;
+      hls.currentLevel = index;
+    }
+    this.publishQualityLevels();
   }
 
   requestPictureInPicture(): void {

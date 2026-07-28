@@ -116,6 +116,7 @@ html[data-theme="light"] {
   --text-tremor-label:   0.75rem;
 
   /* ─── Animation ─── */
+  --animate-spin-slow: spin 5s linear infinite;
   --ease-out-fast: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 150ms;
   --duration-normal: 200ms;
@@ -254,6 +255,30 @@ body {
   min-height: 100vh;
 }
 
+/* ─── Consent banner: reserve, do not overlap ───────────────────────────────
+   `.cookie-banner` is fixed to the bottom edge at z-index 200 (--z-banner), and
+   on a phone it is a tall stacked card rather than a slim strip. Without this
+   reservation the last screenful of every page sits underneath it: visible, but
+   impossible to tap, and impossible to scroll clear because the document ends
+   at the same point. The player's server picker — which sits directly below the
+   video, exactly where a viewer scrolls to — was unusable on mobile for this
+   reason.
+
+   The height is measured and published by CookieConsent.tsx while the banner is
+   mounted; the class and the variable both disappear once consent is given, so
+   this costs nothing for a returning viewer. */
+html.has-consent-bar body {
+  padding-bottom: var(--consent-bar-h, 0px);
+}
+
+/* `scroll-padding-bottom` on the scroll container makes every programmatic
+   `scrollIntoView` (anchor jumps, focus scrolling, the player's own calls) stop
+   short of the banner band instead of parking the target underneath it. The
+   padding above supplies the room; this decides that the room gets used. */
+html.has-consent-bar {
+  scroll-padding-bottom: var(--consent-bar-h, 0px);
+}
+
 /* ══════════════════════════════════════════════════════════
    UNIFIED CONTINUOUS BACKGROUND
    One fixed atmospheric wash sits behind every section so the
@@ -317,17 +342,6 @@ html[data-theme="light"] body::before {
   border-radius: var(--radius-sm);
 }
 
-/* ─── Accent gradient utility ─── */
-.accent-gradient {
-  background: linear-gradient(135deg, var(--color-accent-from), var(--color-accent-to));
-}
-
-.accent-text {
-  background: linear-gradient(135deg, var(--color-accent-from), var(--color-accent-to));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
 
 /* ─── Poster card hover ─── */
 .poster-card {
@@ -381,14 +395,6 @@ html[data-theme="light"] body::before {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-/* ─── Backdrop blur glass effect ─── */
-.glass {
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
 }
 
 /* ─── Button base ─── */
@@ -532,23 +538,6 @@ html[data-theme="light"] body::before {
 ═══════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════
-   GRADIENT UTILITIES (used across the site)
-═══════════════════════════════════════════════════════════ */
-.gradient-text {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7, #d946ef);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.glass-dark {
-  background: rgba(5, 8, 17, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.08);
-}
-
-/* ═══════════════════════════════════════════════════════════
    HOME LAYOUT — section rhythm + top spacing below navbar
 ═══════════════════════════════════════════════════════════ */
 /* Consistent vertical rhythm between homepage sections. */
@@ -563,10 +552,6 @@ html[data-theme="light"] body::before {
 /* Rails inside the home flow shouldn't double their own bottom margin. */
 .home-sections > .rail {
   margin-bottom: 0;
-}
-/* Generic page top spacing helper for inner pages. */
-.page-top {
-  padding-top: var(--nav-offset);
 }
 
 /* ═══════════════════════════════════════════════════════════

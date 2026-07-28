@@ -6,9 +6,10 @@ import {
   addToWatchlist,
   removeFromWatchlist,
 } from '../../../lib/db';
+import { env } from 'cloudflare:workers';
 
-export const POST: APIRoute = async ({ request, locals }) => {
-  const db = locals.runtime.env.DB;
+export const POST: APIRoute = async ({ request }) => {
+  const db = (env as unknown as { DB: D1Database }).DB;
   const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -65,8 +66,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   }
 };
 
-export const DELETE: APIRoute = async ({ request, locals }) => {
-  const db = locals.runtime.env.DB;
+export const DELETE: APIRoute = async ({ request }) => {
+  const db = (env as unknown as { DB: D1Database }).DB;
   const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {

@@ -4,9 +4,10 @@ import Layout from '../layouts/Layout.astro';
 import AuthShowcase from '../components/react/AuthShowcase';
 import { getSessionFromRequest } from '../lib/db';
 import { getTrendingMovies } from '../lib/tmdb';
+import { env } from 'cloudflare:workers';
 
 // Redirect if already logged in
-const db = Astro.locals.runtime.env.DB;
+const db = (env as unknown as { DB: D1Database }).DB;
 const session = await getSessionFromRequest(db, Astro.request);
 if (session) {
   return Astro.redirect('/profile');

@@ -269,6 +269,24 @@ export function ReloadIcon({ size = 22, className }: IconProps) {
   );
 }
 
+/** Minimize the immersive mobile player (swipe-down affordance, native-app style). */
+export function ChevronDownIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...base(size, className)} {...stroke}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** Expand the boxed mobile player back into immersive takeover. */
+export function ChevronUpIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...base(size, className)} {...stroke}>
+      <path d="m6 15 6-6 6 6" />
+    </svg>
+  );
+}
+
 export function BackIcon({ size = 22, className }: IconProps) {
   return (
     <svg {...base(size, className)} {...stroke}>
