@@ -1,0 +1,975 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   mobile.css — comprehensive mobile-first responsive layer
+   All rules are additive and scoped to ≤1023px unless stated.
+   Desktop (≥1024px) layout/styles are never touched here.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════
+   0. MOBILE TOKENS
+   ══════════════════════════════════════════════════════ */
+:root {
+  --mob-nav-h:   60px;
+  --mob-tab-h:   60px;
+  --mob-pad-x:   1rem;
+  --mob-radius:  12px;
+  --mob-gap:     0.75rem;
+}
+
+/* ══════════════════════════════════════════════════════
+   1. SHARED TABLET + MOBILE  (max-width: 1023px)
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 1023px) {
+
+  /* ── Container horizontal padding ── */
+  .container {
+    padding-left: var(--mob-pad-x);
+    padding-right: var(--mob-pad-x);
+  }
+
+  /* ── Section headers ── (container already provides the horizontal inset) */
+  .rail-header,
+  .t10-header {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* ── Scroll rail: momentum + snap ── (aligns to container edge, no extra inset) */
+  .scroll-rail {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .scroll-rail > * {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  /* ── Hero carousel ── */
+  .nf-hero,
+  [class*="hero-carousel"],
+  [class*="HeroCarousel"] {
+    border-radius: 0;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  /* ── Footer link grid ── */
+  footer .grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  /* ── Data-reveal: lighter shift on small screens ── */
+  [data-reveal]:not(.is-revealed) {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  [data-reveal].is-revealed {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   2. TABLET ONLY  (768px – 1023px)
+   ══════════════════════════════════════════════════════ */
+@media (min-width: 768px) and (max-width: 1023px) {
+
+  body { padding-top: 0; }
+  main { padding-top: 5rem; }
+  main:has(.nf-hero),
+  main:has(.detail-hero) { padding-top: 0; }
+
+  /* Hero shorter on tablet */
+  .nf-hero { min-height: 56svh !important; max-height: 56svh !important; }
+
+  /* Poster cards */
+  .poster-card { min-width: 140px; max-width: 160px; }
+
+  /* Bento grid — 2 col */
+  .bento-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .bento-card { grid-column: span 1 !important; }
+  .bento-card--b { grid-column: span 2 !important; }
+}
+
+/* ══════════════════════════════════════════════════════
+   3. MOBILE ONLY  (max-width: 767px)
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+
+  /* ── Body: safe area + tab bar clearance ── */
+  body {
+    padding-bottom: calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 1.5rem);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  main {
+    padding-top: calc(var(--mob-nav-h) + 0.5rem);
+  }
+
+  /* Full-bleed hero pages: hero sits behind the floating nav pill — no top gap.
+     Detail pages have their own backdrop hero that also handles nav clearance. */
+  main:has(.nf-hero),
+  main:has(.detail-hero) {
+    padding-top: 0;
+  }
+
+  /* ── Home sections spacing ── */
+  .home-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-top: 0.25rem;
+  }
+
+  /* ──────────────────────────────────────────
+     BOTTOM TAB BAR
+  ────────────────────────────────────────── */
+  .btb-root {
+    display: flex;
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 2rem);
+    max-width: 440px;
+    height: var(--mob-tab-h);
+    padding: 0 0.5rem;
+    background: rgba(5, 8, 17, 0.82);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    z-index: 110;
+    align-items: center;
+    justify-content: space-around;
+  }
+
+  .btb-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    flex: 1;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 4px;
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.4);
+    transition: color 0.2s ease, transform 0.18s ease;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+
+  .btb-tab:active { transform: scale(0.9); }
+
+  /* Active tab: white icon + label */
+  .btb-tab--active { color: #ffffff; }
+
+  .btb-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+  }
+
+  .btb-badge {
+    position: absolute;
+    top: -6px;
+    right: -9px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    color: #fff;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    z-index: 1;
+  }
+
+  .btb-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  /* Light theme bottom tab bar */
+  html[data-theme="light"] .btb-root {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(0, 0, 0, 0.09);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  }
+  html[data-theme="light"] .btb-tab { color: rgba(0, 0, 0, 0.38); }
+  html[data-theme="light"] .btb-tab--active { color: #18181b; }
+
+  /* ──────────────────────────────────────────
+     SITENAV PILL — mobile tweaks
+  ────────────────────────────────────────── */
+  /* Pill already fixed via SiteNav inline styles;
+     ensure hamburger and icons have solid tap targets */
+  .sitenav-hamburger {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  /* ──────────────────────────────────────────
+     HERO CAROUSEL
+  ────────────────────────────────────────── */
+  .nf-hero {
+    min-height: 88svh !important;
+    max-height: 88svh !important;
+  }
+
+  /* Gradient: heavier bottom fade on portrait */
+  .nf-grad-bottom {
+    background: linear-gradient(
+      to top,
+      #000 0%,
+      rgba(0,0,0,0.92) 22%,
+      rgba(0,0,0,0.55) 50%,
+      rgba(0,0,0,0.12) 78%,
+      transparent 100%
+    ) !important;
+  }
+
+  /* Content: full width, balanced padding, clears the floating bottom bar */
+  .nf-content {
+    padding: 0 1.25rem calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 2rem) !important;
+    max-width: 100% !important;
+  }
+
+  /* Title: slightly smaller on narrow screens */
+  .nf-title {
+    font-size: clamp(1.5rem, 6.5vw, 2.25rem) !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  /* Meta pills: allow wrap, smaller gap */
+  .nf-meta {
+    gap: 0.5rem !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  /* Overview: 2 lines max on mobile, comfortable reading */
+  .nf-overview {
+    -webkit-line-clamp: 2 !important;
+    font-size: 0.875rem !important;
+    line-height: 1.5 !important;
+    margin-bottom: 1.125rem !important;
+  }
+
+  /* Action buttons: pill style, thumb-friendly */
+  .nf-actions { gap: 0.5rem !important; }
+  .nf-btn {
+    padding: 0.75rem 1.25rem !important;
+    font-size: 0.9375rem !important;
+    min-height: 48px !important;
+    border-radius: 9999px !important;
+  }
+  .nf-btn--wl {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+  }
+
+  /* Bottom strip: dots only (arrows hidden via existing rule) */
+  .nf-strip {
+    padding: 0.5rem 1.25rem 1rem !important;
+    gap: 0.5rem !important;
+  }
+
+  /* ──────────────────────────────────────────
+     MOVIE RAIL
+  ────────────────────────────────────────── */
+  .rail { margin-bottom: 0.5rem; }
+
+  .rail-header {
+    padding-left: 0;
+    padding-right: 0;
+    margin-bottom: 0.625rem;
+  }
+
+  .rail-title { font-size: 1rem !important; }
+
+  .rail-view-all {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.5);
+  }
+
+  /* Scroll rail: align to container edge (equal left/right via .container) */
+  .scroll-rail {
+    padding-left: 0;
+    padding-right: 0;
+    gap: 0.625rem;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Edge fades narrower */
+  .rail-viewport::before,
+  .rail-viewport::after { width: 1.25rem !important; }
+
+  /* Hide desktop arrows on mobile */
+  .rail-arrow { display: none !important; }
+
+  /* ── Poster card sizes ── */
+  .poster-card {
+    min-width: 108px;
+    max-width: 124px;
+  }
+  .poster-card-img-wrap {
+    aspect-ratio: 2 / 3;
+    border-radius: 8px;
+  }
+  .poster-card-title {
+    font-size: 0.75rem !important;
+    margin-top: 0.375rem;
+  }
+  .poster-card-subtitle { font-size: 0.6875rem !important; }
+
+  /* ──────────────────────────────────────────
+     TOP 10 RAIL
+  ────────────────────────────────────────── */
+  .t10-rail { margin-bottom: 0.5rem; }
+
+  /* Top 10 rail mobile layout (header padding, viewport scroll, rank/card sizing,
+     item width) is owned by Top10Rail.astro's own scoped @media query — kept as the
+     single source of truth to avoid conflicting !important overrides here. */
+
+  /* ──────────────────────────────────────────
+     TESTIMONIALS
+  ────────────────────────────────────────── */
+  /* Force single column on mobile */
+  [class*="testimonials"],
+  [class*="Testimonials"],
+  .testimonials-col {
+    columns: 1 !important;
+    column-count: 1 !important;
+  }
+
+  /* Show only first column, hide 2nd+3rd */
+  [class*="testimonials"] > *:nth-child(n+2),
+  [class*="TestimonialsColumn"]:nth-child(n+2) {
+    display: none !important;
+  }
+
+  /* Reduce mask height so cards don't get clipped too early */
+  [style*="maskImage"],
+  [style*="mask-image"] {
+    max-height: 520px !important;
+  }
+
+  /* ──────────────────────────────────────────
+     FEATURED GALLERY
+  ────────────────────────────────────────── */
+  /* FeaturedGallery now renders on phones as well (the island switches to a
+     lighter WebGL configuration itself — see FeaturedGallery.tsx). Only the SEO
+     text block stays hidden here; the gallery just gets smaller type. */
+  .seo-block {
+    display: none !important;
+  }
+
+  [aria-label="Featured gallery"] h2 {
+    font-size: clamp(1.5rem, 8vw, 2.75rem) !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  /* Navigation hint: the desktop copy mentions scrolling; keep it small. */
+  [aria-label="Featured gallery"] > div:last-child p:first-child {
+    font-size: 9px !important;
+  }
+
+  /* ──────────────────────────────────────────
+     PLATFORM GRID
+  ────────────────────────────────────────── */
+  /* Hide the side panel on mobile — it's a desktop widget */
+  .pg-panel { display: none !important; }
+
+  /* ──────────────────────────────────────────
+     BENTO CARDS (index.astro)
+  ────────────────────────────────────────── */
+  .bento-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+  .bento-card,
+  .bento-card--a,
+  .bento-card--b,
+  .bento-card--c,
+  .bento-card--d {
+    grid-column: 1 / -1 !important;
+    grid-row: unset !important;
+    padding: 1.25rem !important;
+  }
+
+  /* Big stat card: reduce number size */
+  .bento-stat { font-size: clamp(2.5rem, 14vw, 4rem) !important; }
+  .bento-stat-wrap { height: 72px !important; }
+
+  /* Bento window mock: smaller */
+  .bento-window-body { height: 80px !important; }
+
+  /* Feature heading */
+  .feat-head {
+    padding: 0 var(--mob-pad-x);
+    text-align: center;
+    margin-bottom: 1.5rem !important;
+  }
+  .feat-title { font-size: clamp(1.375rem, 6vw, 2rem) !important; }
+  .feat-sub { font-size: 0.875rem !important; }
+
+  /* ──────────────────────────────────────────
+     FAQ SECTION
+  ────────────────────────────────────────── */
+  .faq-block { padding: 2rem 1rem 1.5rem !important; }
+  .faq-header { margin-bottom: 1.5rem !important; }
+
+  .faq-title { font-size: 1.375rem !important; }
+  .faq-subtitle { font-size: 0.875rem !important; }
+
+  .faq-list { gap: 0.5rem !important; }
+
+  /* Rounded card per question — consistent radius on small screens */
+  .faq-item { border-radius: 12px !important; }
+
+  .faq-q {
+    padding: 0.9rem 1rem !important;
+    gap: 0.75rem !important;
+    min-height: 52px;
+    align-items: center;
+  }
+
+  .faq-q-num { display: none !important; } /* hide number on mobile to save space */
+
+  /* Long questions: readable size + wrap cleanly */
+  .faq-q-text {
+    font-size: 0.9rem !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Keep chevron compact */
+  .faq-chevron svg { width: 16px; height: 16px; }
+
+  .faq-a {
+    padding: 0 1rem 1.1rem 1rem !important;
+  }
+  .faq-a p {
+    font-size: 0.875rem !important;
+    line-height: 1.65 !important;
+    margin-top: 0.6rem !important;
+  }
+
+  /* ──────────────────────────────────────────
+     HOME NOTICE
+  ────────────────────────────────────────── */
+  .home-notice {
+    padding: 0.625rem var(--mob-pad-x);
+    font-size: 0.8125rem;
+    margin: 0.5rem var(--mob-pad-x);
+    border-radius: 10px;
+  }
+
+  /* ──────────────────────────────────────────
+     CINEMATIC FOOTER
+  ────────────────────────────────────────── */
+  /* Link grid: 2 cols on mobile */
+  [class*="CinematicFooter"] .grid,
+  footer .grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 1.5rem 1rem !important;
+  }
+
+  /* Section column headings */
+  footer p[class*="uppercase"] {
+    font-size: 0.625rem !important;
+  }
+
+  /* ──────────────────────────────────────────
+     SEO STATS BAR
+  ────────────────────────────────────────── */
+  .seo-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.625rem !important;
+  }
+  .seo-stat { padding: 1rem 0.75rem !important; }
+  .seo-stat-num { font-size: clamp(1.25rem, 6vw, 1.75rem) !important; }
+
+  /* ──────────────────────────────────────────
+     STREAMING HUBS (StreamingHubs)
+  ────────────────────────────────────────── */
+
+  /* ──────────────────────────────────────────
+     BACK TO TOP — above tab bar
+  ────────────────────────────────────────── */
+  .back-to-top,
+  [aria-label="Back to top"] {
+    bottom: calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 12px) !important;
+    right: 1rem !important;
+  }
+
+  /* ──────────────────────────────────────────
+     COOKIE CONSENT — polished mobile layout
+     Sits above the bottom tab bar, full-width card with
+     stacked full-width buttons that are easy to thumb.
+  ────────────────────────────────────────── */
+  .cookie-banner {
+    position: fixed !important;
+    left: var(--mob-pad-x) !important;
+    right: var(--mob-pad-x) !important;
+    bottom: calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 10px) !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 0 !important;
+    border-top: none !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 16px !important;
+    background: rgba(10, 10, 12, 0.92) !important;
+    backdrop-filter: blur(24px) saturate(160%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+    box-shadow:
+      0 24px 60px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(255,255,255,0.03) !important;
+    /* Prevent very tall customize panel from overflowing viewport */
+    max-height: calc(100svh - var(--mob-tab-h) - env(safe-area-inset-bottom, 0px) - var(--mob-nav-h) - 2rem);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html[data-theme="light"] .cookie-banner {
+    background: rgba(255, 255, 255, 0.96) !important;
+    border-color: rgba(0,0,0,0.08) !important;
+    box-shadow:
+      0 24px 60px rgba(0,0,0,0.18),
+      0 0 0 1px rgba(0,0,0,0.03) !important;
+  }
+
+  .cookie-banner .cookie-content {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 1rem 1rem 0.875rem !important;
+    gap: 0.875rem !important;
+  }
+
+  /* Text block */
+  .cookie-banner .cookie-desc {
+    font-size: 0.8125rem !important;
+    line-height: 1.5;
+    margin: 0 0 0.5rem;
+  }
+  .cookie-banner .cookie-list {
+    font-size: 0.75rem !important;
+    padding-left: 1rem;
+    gap: 0.1875rem;
+  }
+  .cookie-banner .cookie-list li { line-height: 1.4; }
+
+  /* Actions — full-width stacked buttons */
+  .cookie-banner .cookie-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem !important;
+    width: 100%;
+  }
+  .cookie-banner .cookie-actions .btn {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: 10px;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  /* Primary "Accept all" gets its own full-width row on top */
+  .cookie-banner .cookie-actions .btn-primary {
+    grid-column: 1 / -1;
+  }
+
+  /* Customize panel */
+  .cookie-banner .cookie-customize-title {
+    font-size: 0.9375rem !important;
+    margin: 0 0 0.75rem !important;
+  }
+  .cookie-banner .cookie-toggles {
+    gap: 0.5rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+  .cookie-banner .toggle-row {
+    padding: 0.625rem 0.75rem !important;
+    gap: 0.75rem !important;
+    border-radius: 10px !important;
+  }
+  .cookie-banner .toggle-row-label { font-size: 0.8125rem !important; }
+  .cookie-banner .toggle-row-desc {
+    font-size: 0.6875rem !important;
+    line-height: 1.35;
+    margin-top: 0.125rem;
+  }
+
+  /* ──────────────────────────────────────────
+     LOADING SCREEN
+  ────────────────────────────────────────── */
+
+  /* ──────────────────────────────────────────
+     GLOBAL INTERACTION IMPROVEMENTS
+  ────────────────────────────────────────── */
+  /* Remove tap highlight on all interactive elements */
+  a, button, [role="button"], summary {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Minimum tap target for all links and buttons */
+  a, button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* But don't force min-height on inline text links */
+  p a, li a, .faq-a a {
+    min-height: unset;
+    display: inline;
+  }
+
+  /* Forms: form fields must be ≥16px so iOS Safari doesn't auto-zoom on focus,
+     and native <select> controls need a proper 44px tap target (the min-height
+     rule above only covers a/button). */
+  .input, select, textarea, .search-input {
+    font-size: 16px !important;
+  }
+  select, .filter-select, .filter-select-sm {
+    min-height: 44px;
+  }
+
+  /* Media never exceeds the viewport (no global img safeguard existed). */
+  img, video { max-width: 100%; }
+
+  /* Horizontal rail: snap + momentum */
+  [class*="rail-viewport"],
+  .rail-viewport {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Rail fade edges */
+  .rail-viewport::before,
+  .rail-viewport::after { width: 1.25rem !important; }
+
+  /* ──────────────────────────────────────────
+     SCROLL REVEAL — lighter on mobile
+  ────────────────────────────────────────── */
+  [data-reveal]:not(.is-revealed) {
+    transform: translateY(6px);
+  }
+
+  /* ══════════════════════════════════════════
+     LISTING PAGES — movies · series · anime · search
+     (.browse-page, .poster-grid, .pagination)
+  ══════════════════════════════════════════ */
+  .browse-page {
+    padding-top: 1.5rem !important;
+    padding-bottom: 2.5rem !important;
+  }
+  .browse-header {
+    margin-bottom: 1.25rem !important;
+    gap: 0.5rem !important;
+  }
+  .browse-title {
+    font-size: 1.5rem !important;
+  }
+  .browse-count { font-size: 0.8125rem !important; }
+
+  /* ── Sort / Filter controls (FilterPanel) ──
+     Bottom-align the row so the "Sort by" label above the select never offsets
+     it from the label-less Filters / Clear-all buttons. All controls share a
+     consistent 44px tap height and even gaps — stays aligned on every phone. */
+  .browse-page .filter-panel { margin-bottom: 1.25rem !important; }
+  .browse-page .filter-top-row {
+    align-items: flex-end !important;
+    gap: 0.5rem !important;
+    flex-wrap: wrap !important;
+  }
+  .browse-page .filter-sort {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  .browse-page .filter-sort .filter-select { min-height: 44px; }
+  .browse-page .filter-toggle,
+  .browse-page .filter-reset {
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+
+  /* ── Poster grid — clean, centered two-up layout ──
+     Exactly two columns, both cells equal (1fr). The gutter between the cards
+     equals the container's edge padding (--mob-pad-x), so the spacing between
+     the cards and each screen edge is symmetric. Cards fill their cell fully
+     (overriding the rail-oriented min/max-width) → identical dimensions. */
+  .browse-page .poster-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: var(--mob-pad-x) !important;
+    justify-items: stretch !important;
+    align-items: start !important;
+  }
+  .browse-page .poster-grid .poster-card {
+    min-width: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Non-browse poster grids (e.g. search results) keep the compact 3-up. */
+  .poster-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.625rem !important;
+  }
+
+  /* Pagination — compact, wraps, thumb-friendly */
+  .pagination {
+    margin-top: 2rem !important;
+    gap: 0.375rem !important;
+  }
+  .pagination-btn {
+    padding: 0.5rem 0.875rem !important;
+    font-size: 0.8125rem !important;
+    min-height: 44px !important;
+  }
+  .pagination-pages { gap: 0.25rem !important; flex-wrap: wrap; justify-content: center; }
+  .pagination-page {
+    width: 40px !important;
+    height: 40px !important;
+    font-size: 0.875rem !important;
+  }
+
+  .browse-empty { padding: 3rem 1rem !important; }
+  .browse-error { padding: 3rem 1rem !important; }
+
+  /* ══════════════════════════════════════════
+     DETAIL PAGES — movie/[id] · series/[id]
+  ══════════════════════════════════════════ */
+  .detail-hero {
+    min-height: 62svh !important;
+    padding-bottom: 2rem !important;
+  }
+  .detail-hero-content {
+    gap: 1.25rem !important;
+    padding-top: calc(var(--mob-nav-h) + 1rem) !important;
+  }
+  .detail-title {
+    font-size: clamp(1.5rem, 6.5vw, 2.25rem) !important;
+  }
+  .detail-tagline { font-size: 0.875rem !important; }
+  .detail-overview {
+    font-size: 0.9375rem !important;
+    margin-bottom: 1.25rem !important;
+  }
+  .detail-meta { gap: 0.5rem !important; }
+
+  /* Actions: full-width play button, wrap nicely */
+  .detail-actions {
+    gap: 0.625rem !important;
+    margin-bottom: 1.25rem !important;
+  }
+  .detail-play-btn {
+    padding: 0.75rem 1.5rem !important;
+    font-size: 0.9375rem !important;
+    min-height: 48px !important;
+  }
+
+  /* Body spacing */
+  .detail-body {
+    padding-top: 2rem !important;
+    padding-bottom: 2.5rem !important;
+  }
+  .detail-section { margin-bottom: 2rem !important; }
+  .detail-section-title {
+    font-size: 1.125rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  /* Trailer — force 16:9, full width on mobile (was 75vh — too tall) */
+  .trailer-wrap {
+    height: auto !important;
+    width: 100% !important;
+    aspect-ratio: 16 / 9 !important;
+  }
+
+  /* Cast grid — compact 3 across on mobile */
+  .cast-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.5rem !important;
+  }
+  .cast-card { gap: 0.375rem !important; }
+  .cast-avatar { border-radius: 8px !important; }
+  .cast-name { font-size: 0.75rem !important; line-height: 1.2 !important; }
+  .cast-character { font-size: 0.6875rem !important; line-height: 1.2 !important; }
+
+  /* Facts / credits: stack label above value */
+  .detail-facts,
+  .detail-credits-summary {
+    grid-template-columns: 1fr !important;
+    gap: 0.125rem 0 !important;
+  }
+  .detail-facts dt,
+  .detail-credits-summary dt {
+    margin-top: 0.625rem;
+  }
+  .detail-facts dd,
+  .detail-credits-summary dd {
+    margin-bottom: 0.25rem;
+  }
+
+  /* Provider logos: slightly smaller */
+  .provider-logo { width: 46px !important; height: 46px !important; }
+
+  /* Episodes (series) */
+  .episode-number { min-width: 20px !important; }
+
+  /* ══════════════════════════════════════════
+     SEARCH PAGE
+     Layout + poster/tab/people styling now lives in the InstantSearch island's
+     own scoped styles (the `.is-*` classes, with their own mobile queries). Only
+     the page-level container spacing stays here.
+  ══════════════════════════════════════════ */
+  .search-page {
+    padding-top: calc(var(--mob-nav-h) + 1rem) !important;
+    padding-bottom: 3rem !important;
+  }
+  .search-title { font-size: 1.375rem !important; }
+
+  /* ══════════════════════════════════════════
+     WATCHLIST PAGE
+  ══════════════════════════════════════════ */
+  .watchlist-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.625rem !important;
+  }
+
+  /* ══════════════════════════════════════════
+     PROFILE PAGE
+  ══════════════════════════════════════════ */
+  .profiles-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem !important;
+  }
+  .privacy-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  /* ══════════════════════════════════════════
+     STATIC PAGES — about · contact · terms · privacy
+  ══════════════════════════════════════════ */
+  .about-page,
+  .legal-page,
+  .contact-page {
+    padding-top: calc(var(--mob-nav-h) + 1.25rem) !important;
+    padding-bottom: 3rem !important;
+  }
+  .contact-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+  .contact-lead { font-size: 1rem !important; }
+
+  /* ══════════════════════════════════════════
+     ERROR PAGES — 404 · 500
+  ══════════════════════════════════════════ */
+  .err-page {
+    min-height: 60svh !important;
+    padding: 2.5rem 1rem !important;
+  }
+
+  /* ══════════════════════════════════════════
+     PLATFORM PAGES — netflix/prime/disney/hotstar/appletv
+  ══════════════════════════════════════════ */
+  .platform-page {
+    padding-top: calc(var(--mob-nav-h) + 0.5rem) !important;
+    padding-bottom: 2.5rem !important;
+  }
+  .platform-brand {
+    padding: 1.25rem 0 1rem !important;
+    gap: 0.875rem !important;
+  }
+  .platform-logo-wrap {
+    width: 48px !important;
+    height: 48px !important;
+  }
+  .platform-name { font-size: 1.375rem !important; }
+  .platform-sections { padding-top: 1rem !important; }
+}
+
+/* ══════════════════════════════════════════════════════
+   VERY SMALL SCREENS  (max-width: 400px) — 2-up poster grids
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 400px) {
+  .poster-grid,
+  .watchlist-grid,
+  .people-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .cast-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.4rem !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   4. VERY SMALL SCREENS  (max-width: 380px)
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 380px) {
+
+  :root {
+    --mob-pad-x: 0.875rem;
+  }
+
+  .btb-label { font-size: 0.5625rem; }
+  .btb-icon { width: 22px; height: 22px; }
+
+  .poster-card { min-width: 96px; max-width: 108px; }
+
+  .nf-btn { padding: 0.625rem 1rem !important; font-size: 0.875rem !important; }
+
+  .bento-card { padding: 1rem !important; }
+  .feat-title { font-size: clamp(1.25rem, 7vw, 1.75rem) !important; }
+
+  .faq-q { padding: 0.875rem var(--mob-pad-x) !important; }
+}
+
+/* ══════════════════════════════════════════════════════
+   5. SAFE-AREA / NOTCH SUPPORT
+   ══════════════════════════════════════════════════════ */
+@supports (padding: env(safe-area-inset-bottom)) {
+  @media (max-width: 767px) {
+    body {
+      padding-bottom: calc(var(--mob-tab-h) + env(safe-area-inset-bottom) + 1.5rem);
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   6. REDUCED MOTION
+   ══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    transition: none !important;
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .btb-tab { transition: color 0s !important; }
+  .nf-bg { transition: none !important; }
+  .nf-bg--active .nf-bg-img { animation: none !important; }
+}

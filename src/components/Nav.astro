@@ -1,0 +1,12 @@
+---
+// Nav.astro — renders SiteNav (Navbar1-style animated floating pill)
+import SiteNav from './react/SiteNav';
+
+export interface Props {
+  user?: { name: string; avatar_url: string | null } | null;
+}
+const { user } = Astro.props;
+const pathname = Astro.url.pathname;
+---
+
+<SiteNav client:load user={user} pathname={pathname} />

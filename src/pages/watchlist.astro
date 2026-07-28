@@ -1,0 +1,534 @@
+---
+// src/pages/watchlist.astro — Auth-gated watchlist page
+import Layout from '../layouts/Layout.astro';
+import { getSessionFromRequest, getProfilesByUserId, getWatchlist } from '../lib/db';
+import type { DBWatchlistEntry } from '../lib/db';
+
+// Auth gate
+const db = Astro.locals.runtime.env.DB;
+const session = await getSessionFromRequest(db, Astro.request);
+if (!session) {
+  return Astro.redirect('/login?return=/watchlist');
+}
+
+const profiles = await getProfilesByUserId(db, session.user.id);
+const activeProfile = profiles.find((p) => p.is_default) ?? profiles[0];
+let entries: DBWatchlistEntry[] = [];
+
+if (activeProfile) {
+  entries = await getWatchlist(db, activeProfile.id);
+}
+
+// Client-side filter params (handled server-side too for SEO/sharing)
+const url = Astro.url;
+const filterType = url.searchParams.get('type') ?? 'all'; // all | movie | tv
+const sortBy = url.searchParams.get('sort') ?? 'newest'; // newest | alpha | rating
+
+// Apply filters
+let filtered = entries;
+if (filterType === 'movie') filtered = entries.filter((e) => e.media_type === 'movie');
+else if (filterType === 'tv') filtered = entries.filter((e) => e.media_type === 'tv');
+
+// Sort
+if (sortBy === 'alpha') {
+  filtered = [...filtered].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+const TMDB_IMG = 'https://image.tmdb.org/t/p';
+
+function filterUrl(type: string, sort = sortBy) {
+  const params = new URLSearchParams({ type, sort });
+  return `/watchlist?${params.toString()}`;
+}
+
+function sortUrl(sort: string) {
+  const params = new URLSearchParams({ type: filterType, sort });
+  return `/watchlist?${params.toString()}`;
+}
+---
+
+<Layout
+  title="My Watchlist — Filmora Movie"
+  user={session.user}
+>
+  <div class="container watchlist-page">
+    <div class="watchlist-header">
+      <div class="watchlist-title-row">
+        <h1 class="watchlist-title">My Watchlist</h1>
+        {activeProfile && (
+          <span class="watchlist-profile-badge" title={`Active profile: ${activeProfile.name}`}>
+            {activeProfile.name}
+          </span>
+        )}
+      </div>
+      {filtered.length > 0 && (
+        <p class="watchlist-count">{filtered.length} title{filtered.length !== 1 ? 's' : ''}</p>
+      )}
+    </div>
+
+    {entries.length === 0 ? (
+
+      <div class="watchlist-empty">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="watchlist-empty-icon">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+        </svg>
+        <h2 class="watchlist-empty-title">Your watchlist is empty</h2>
+        <p class="watchlist-empty-desc">
+          Browse movies and series and click the <strong>+ Watchlist</strong> button to save titles here.
+        </p>
+        <div class="watchlist-empty-actions">
+          <a href="/movies" class="btn btn-primary">Browse Movies</a>
+          <a href="/series" class="btn btn-secondary">Browse Series</a>
+        </div>
+      </div>
+    ) : (
+      <>
+
+        <div class="watchlist-controls">
+          <div class="watchlist-filters" role="group" aria-label="Filter by type">
+            <a href={filterUrl('all')} class={`wl-filter-btn ${filterType === 'all' ? 'wl-filter-btn--active' : ''}`} aria-pressed={filterType === 'all'}>
+              All ({entries.length})
+            </a>
+            <a href={filterUrl('movie')} class={`wl-filter-btn ${filterType === 'movie' ? 'wl-filter-btn--active' : ''}`} aria-pressed={filterType === 'movie'}>
+              Movies ({entries.filter(e => e.media_type === 'movie').length})
+            </a>
+            <a href={filterUrl('tv')} class={`wl-filter-btn ${filterType === 'tv' ? 'wl-filter-btn--active' : ''}`} aria-pressed={filterType === 'tv'}>
+              Series ({entries.filter(e => e.media_type === 'tv').length})
+            </a>
+          </div>
+
+          <div class="watchlist-sort">
+            <input
+              type="search"
+              class="input wl-search-input"
+              placeholder="Search your list…"
+              aria-label="Search within watchlist"
+              data-wl-search
+            />
+            <label for="sort-select" class="wl-sort-label">Sort:</label>
+            <select
+              id="sort-select"
+              class="input wl-sort-select"
+              onchange="window.location.href = this.value"
+            >
+              <option value={sortUrl('newest')} selected={sortBy === 'newest'}>Recently added</option>
+              <option value={sortUrl('alpha')} selected={sortBy === 'alpha'}>A – Z</option>
+            </select>
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div class="watchlist-empty-filter">
+            <p>No {filterType === 'movie' ? 'movies' : 'series'} in your watchlist.</p>
+            <a href={filterUrl('all')} class="btn btn-secondary">Show all</a>
+          </div>
+        ) : (
+
+          <div class="watchlist-grid" role="list" data-reveal>
+            {filtered.map((entry) => {
+              const posterUrl = entry.poster_path
+                ? `${TMDB_IMG}/w342${entry.poster_path}`
+                : null;
+              const href = entry.media_type === 'movie'
+                ? `/movie/${entry.tmdb_id}`
+                : `/series/${entry.tmdb_id}`;
+              const addedDate = new Date(entry.added_at).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric'
+              });
+              return (
+                <article class="wl-card" role="listitem">
+                  <a href={href} class="wl-card-link" aria-label={entry.title}>
+                    <div class="wl-card-img-wrap">
+                      {posterUrl ? (
+                        <img
+                          src={posterUrl}
+                          alt=""
+                          class="wl-card-img"
+                          loading="lazy"
+                          width="342"
+                          height="513"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div class="wl-card-placeholder" aria-hidden="true">
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                        </div>
+                      )}
+                      <span class={`wl-card-type ${entry.media_type === 'movie' ? 'wl-card-type--movie' : 'wl-card-type--tv'}`}>
+                        {entry.media_type === 'movie' ? 'Movie' : 'Series'}
+                      </span>
+                    </div>
+                  </a>
+                  <div class="wl-card-info">
+                    <a href={href} class="wl-card-title">{entry.title}</a>
+                    <span class="wl-card-date">Added {addedDate}</span>
+                    <form method="POST" action="/api/watchlist" class="wl-remove-form">
+                      <input type="hidden" name="_method" value="DELETE" />
+                      <input type="hidden" name="tmdbId" value={entry.tmdb_id} />
+                      <input type="hidden" name="mediaType" value={entry.media_type} />
+                      <button
+                        type="button"
+                        class="wl-remove-btn"
+                        aria-label={`Remove ${entry.title} from watchlist`}
+                        data-tmdb-id={entry.tmdb_id}
+                        data-media-type={entry.media_type}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M18 6 6 18M6 6l12 12"/>
+                        </svg>
+                        Remove
+                      </button>
+                    </form>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</Layout>
+
+<script>
+  // Client-side remove without page reload
+  document.querySelectorAll('.wl-remove-btn').forEach((btn) => {
+    btn.addEventListener('click', async function(this: HTMLButtonElement) {
+      const tmdbId = parseInt(this.dataset.tmdbId ?? '');
+      const mediaType = this.dataset.mediaType;
+      if (!tmdbId || !mediaType) return;
+
+      this.disabled = true;
+      try {
+        const res = await fetch('/api/watchlist', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbId, mediaType }),
+        });
+        if (res.ok) {
+          // Remove the card from DOM
+          const card = this.closest('.wl-card') as HTMLElement | null;
+          if (card) {
+            card.style.opacity = '0';
+            card.style.transform = 'scale(0.95)';
+            card.style.transition = 'all 0.2s ease';
+            setTimeout(() => card.remove(), 200);
+          }
+        } else {
+          this.disabled = false;
+        }
+      } catch {
+        this.disabled = false;
+      }
+    });
+  });
+
+  // Search within watchlist — filters cards live by title.
+  const wlSearch = document.querySelector<HTMLInputElement>('[data-wl-search]');
+  wlSearch?.addEventListener('input', () => {
+    const term = wlSearch.value.trim().toLowerCase();
+    document.querySelectorAll<HTMLElement>('.wl-card').forEach((card) => {
+      const title = card.querySelector('.wl-card-title')?.textContent?.toLowerCase() ?? '';
+      card.style.display = !term || title.includes(term) ? '' : 'none';
+    });
+  });
+</script>
+
+<style>
+  .watchlist-page {
+    padding-top: var(--nav-offset);
+    padding-bottom: 4rem;
+  }
+
+  .watchlist-header {
+    margin-bottom: 2rem;
+  }
+
+  .watchlist-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.375rem;
+  }
+
+  .watchlist-title {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--color-text);
+    letter-spacing: var(--letter-spacing-tight);
+    margin: 0;
+  }
+
+  .watchlist-profile-badge {
+    font-size: var(--font-size-xs);
+    padding: 0.2rem 0.625rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    color: var(--color-text-3);
+    background: var(--color-surface-2);
+  }
+
+  .watchlist-count {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-3);
+    margin: 0;
+  }
+
+  /* Controls */
+  .watchlist-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .watchlist-filters {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .wl-filter-btn {
+    padding: 0.4375rem 0.875rem;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-2);
+    text-decoration: none;
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    transition: all var(--duration-fast) ease;
+  }
+
+  .wl-filter-btn:hover {
+    color: var(--color-text);
+    background: var(--color-surface-2);
+    border-color: var(--color-border);
+  }
+
+  .wl-filter-btn--active {
+    color: var(--color-text);
+    background: var(--color-surface-2);
+    border-color: var(--color-border);
+  }
+
+  .watchlist-sort {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .wl-search-input {
+    width: auto;
+    max-width: 200px;
+    height: 38px;
+  }
+
+  .wl-sort-label {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-3);
+    white-space: nowrap;
+  }
+
+  .wl-sort-select {
+    width: auto;
+    appearance: none;
+    cursor: pointer;
+    padding-right: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+
+  /* Empty state */
+  .watchlist-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 5rem 0;
+    text-align: center;
+    color: var(--color-text-3);
+  }
+
+  .watchlist-empty-icon {
+    color: var(--color-text-3);
+    opacity: 0.5;
+  }
+
+  .watchlist-empty-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .watchlist-empty-desc {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-2);
+    margin: 0;
+    line-height: var(--line-height-normal);
+    max-width: 400px;
+  }
+
+  .watchlist-empty-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* Empty filter state */
+  .watchlist-empty-filter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 3rem 0;
+    text-align: center;
+    color: var(--color-text-2);
+    font-size: var(--font-size-sm);
+  }
+
+  /* Grid */
+  .watchlist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1.25rem;
+  }
+
+  @media (min-width: 640px) {
+    .watchlist-grid {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .watchlist-grid {
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    }
+  }
+
+  .wl-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: transform var(--duration-normal) ease;
+  }
+
+  .wl-card:hover {
+    transform: scale(1.02);
+  }
+
+  .wl-card-link {
+    display: block;
+    text-decoration: none;
+  }
+
+  .wl-card-img-wrap {
+    position: relative;
+    aspect-ratio: 2/3;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--color-surface-2);
+  }
+
+  .wl-card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 300ms ease;
+  }
+
+  .wl-card:hover .wl-card-img {
+    transform: scale(1.04);
+  }
+
+  .wl-card-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-3);
+  }
+
+  .wl-card-type {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-full);
+    border: 1px solid;
+  }
+
+  .wl-card-type--movie {
+    color: #4285F4;
+    border-color: rgba(66,133,244,0.4);
+    background: rgba(66,133,244,0.08);
+  }
+
+  .wl-card-type--tv {
+    color: #A142F4;
+    border-color: rgba(161,66,244,0.4);
+    background: rgba(161,66,244,0.08);
+  }
+
+  .wl-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .wl-card-title {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+
+  .wl-card-title:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .wl-card-date {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-3);
+  }
+
+  .wl-remove-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+    transition: color var(--duration-fast) ease;
+  }
+
+  .wl-remove-btn:hover {
+    color: var(--color-error);
+  }
+
+  .wl-remove-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+</style>

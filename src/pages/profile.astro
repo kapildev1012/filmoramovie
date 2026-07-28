@@ -1,0 +1,630 @@
+---
+// src/pages/profile.astro — Profile management page
+import Layout from '../layouts/Layout.astro';
+import { getSessionFromRequest, getProfilesByUserId, getWatchlist } from '../lib/db';
+
+// Auth gate
+const db = Astro.locals.runtime.env.DB;
+const session = await getSessionFromRequest(db, Astro.request);
+if (!session) {
+  return Astro.redirect('/login?return=/profile');
+}
+
+const user = session.user;
+const profiles = await getProfilesByUserId(db, user.id);
+const activeProfile = profiles.find((p) => p.is_default) ?? profiles[0];
+
+// Get watchlist count for each profile
+const watchlistCounts = Object.fromEntries(
+  await Promise.all(
+    profiles.map(async (p) => [p.id, (await getWatchlist(db, p.id)).length] as const)
+  )
+);
+
+const AVATAR_COLORS = [
+  '#4285F4', '#A142F4', '#22c55e', '#f59e0b',
+  '#ec4899', '#06b6d4', '#ef4444', '#8b5cf6'
+];
+---
+
+<Layout title="Profile — Filmora Movie" user={user}>
+  <div class="container profile-page">
+    
+    <section class="profile-section" data-reveal aria-labelledby="account-heading">
+      <h1 class="profile-page-title" id="account-heading">Account</h1>
+
+      <div class="account-card">
+        <div class="account-avatar">
+          {user.avatar_url ? (
+            <img src={user.avatar_url} alt={user.name} class="account-avatar-img" width="64" height="64" loading="eager" />
+          ) : (
+            <div class="account-avatar-placeholder" aria-hidden="true">{user.name.charAt(0).toUpperCase()}</div>
+          )}
+        </div>
+        <div class="account-info">
+          <h2 class="account-name">{user.name}</h2>
+          <p class="account-email">{user.email}</p>
+          <p class="account-meta">Signed in with Google · Member since {new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+        </div>
+        <div class="account-actions">
+          <form method="POST" action="/api/auth/signout">
+            <button type="submit" class="btn btn-secondary">Sign out</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    
+    <section class="profile-section" data-reveal aria-labelledby="profiles-heading">
+      <div class="profile-section-header">
+        <h2 class="profile-section-title" id="profiles-heading">Profiles</h2>
+        <p class="profile-section-sub">Up to 5 profiles per account. Each profile has its own watchlist and ratings.</p>
+      </div>
+
+      <div class="profiles-grid" role="list">
+        {profiles.map((profile) => (
+          <article
+            class={`profile-card ${profile.is_default ? 'profile-card--active' : ''}`}
+            role="listitem"
+           
+          >
+            <div
+              class="profile-avatar"
+              style={`background-color: ${profile.avatar_color}`}
+              aria-hidden="true"
+            >
+              {profile.name.charAt(0).toUpperCase()}
+            </div>
+            <div class="profile-card-info">
+              <span class="profile-card-name">
+                {profile.name}
+                {profile.is_kids ? <span class="profile-kids-badge">Kids</span> : null}
+                {profile.is_default ? <span class="profile-active-badge">Active</span> : null}
+              </span>
+              <span class="profile-card-meta">
+                {watchlistCounts[profile.id] ?? 0} in watchlist
+              </span>
+            </div>
+            {!profile.is_default && (
+              <form method="POST" action="/api/profile/switch" class="profile-switch-form">
+                <input type="hidden" name="profileId" value={profile.id} />
+                <button type="submit" class="btn btn-ghost profile-switch-btn">Switch</button>
+              </form>
+            )}
+          </article>
+        ))}
+
+        {profiles.length < 5 && (
+          <button
+            class="profile-add-btn"
+            type="button"
+            id="add-profile-btn"
+            aria-label="Add a new profile"
+          >
+            <div class="profile-add-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 8v8M8 12h8"/>
+              </svg>
+            </div>
+            <span class="profile-add-label">Add Profile</span>
+          </button>
+        )}
+      </div>
+    </section>
+
+    
+    <dialog id="add-profile-dialog" class="profile-dialog" aria-label="Add new profile">
+      <form method="POST" action="/api/profile" class="profile-dialog-form" id="add-profile-form">
+        <h3 class="profile-dialog-title">Add Profile</h3>
+
+        <div class="profile-dialog-field">
+          <label for="profile-name" class="profile-dialog-label">Profile name</label>
+          <input
+            type="text"
+            id="profile-name"
+            name="name"
+            class="input"
+            placeholder="e.g. Alex"
+            maxlength="30"
+            required
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="profile-dialog-field">
+          <label class="profile-dialog-label">Avatar color</label>
+          <div class="color-picker" role="group" aria-label="Choose avatar color">
+            {AVATAR_COLORS.map((color, i) => (
+              <label class="color-swatch-label" title={color}>
+                <input
+                  type="radio"
+                  name="avatar_color"
+                  value={color}
+                  checked={i === 0}
+                  class="color-swatch-input"
+                  aria-label={`Color ${i + 1}`}
+                />
+                <span class="color-swatch" style={`background: ${color}`} />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div class="profile-dialog-field profile-dialog-checkbox">
+          <label class="profile-dialog-check-label">
+            <input type="checkbox" name="is_kids" value="1" />
+            <span>Kids profile (filters content by certification)</span>
+          </label>
+        </div>
+
+        <div class="profile-dialog-actions">
+          <button type="submit" class="btn btn-primary">Create Profile</button>
+          <button type="button" class="btn btn-ghost" id="cancel-add-profile">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    
+    <section class="profile-section" data-reveal aria-labelledby="privacy-heading">
+      <h2 class="profile-section-title" id="privacy-heading">Data & Privacy</h2>
+
+      <div class="privacy-grid">
+        <div class="privacy-item">
+          <h3 class="privacy-item-title">What we store</h3>
+          <ul class="privacy-item-list">
+            <li>Your Google account name and email address</li>
+            <li>Your watchlist items (title, TMDB ID, media type)</li>
+            <li>Your star ratings (1–5) per title</li>
+            <li>Your active profile and preferences</li>
+            <li>Session cookie for authentication</li>
+          </ul>
+        </div>
+
+        <div class="privacy-item">
+          <h3 class="privacy-item-title">What we never store</h3>
+          <ul class="privacy-item-list">
+            <li>Passwords or payment information</li>
+            <li>Your viewing history from streaming services</li>
+            <li>Third-party tracking identifiers</li>
+            <li>Advertising profiles</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="privacy-actions">
+        <a href="/privacy" class="btn btn-secondary">Privacy Policy</a>
+        <button type="button" class="btn btn-ghost danger-btn" id="delete-account-btn">
+          Delete account
+        </button>
+      </div>
+    </section>
+  </div>
+</Layout>
+
+<script>
+  // Add profile dialog
+  const addBtn = document.getElementById('add-profile-btn');
+  const dialog = document.getElementById('add-profile-dialog') as HTMLDialogElement | null;
+  const cancelBtn = document.getElementById('cancel-add-profile');
+
+  if (addBtn && dialog) {
+    addBtn.addEventListener('click', () => dialog.showModal());
+  }
+
+  if (cancelBtn && dialog) {
+    cancelBtn.addEventListener('click', () => dialog.close());
+  }
+
+  // Close on backdrop click
+  if (dialog) {
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) dialog.close();
+    });
+  }
+
+  // Delete account confirmation
+  const deleteBtn = document.getElementById('delete-account-btn');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', () => {
+      const confirmed = window.confirm(
+        'Delete your account? This will permanently remove your watchlist, ratings, and all profile data. This cannot be undone.'
+      );
+      if (confirmed) {
+        window.location.href = '/api/account/delete';
+      }
+    });
+  }
+</script>
+
+<style>
+  .profile-page {
+    padding-top: var(--nav-offset);
+    padding-bottom: 4rem;
+  }
+
+  .profile-page-title {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--color-text);
+    letter-spacing: var(--letter-spacing-tight);
+    margin: 0 0 2rem;
+  }
+
+  .profile-section {
+    margin-bottom: 3.5rem;
+    padding-bottom: 3.5rem;
+  }
+
+  .profile-section:last-child {
+    border-bottom: none;
+  }
+
+  .profile-section-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .profile-section-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: var(--letter-spacing-tight);
+    margin: 0 0 0.375rem;
+  }
+
+  .profile-section-sub {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-3);
+    margin: 0;
+  }
+
+  /* Account card */
+  .account-card {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    flex-wrap: wrap;
+  }
+
+  .account-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 2px solid var(--color-border);
+  }
+
+  .account-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .account-avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    background: var(--color-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .account-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .account-name {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 0.25rem;
+  }
+
+  .account-email {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-2);
+    margin: 0 0 0.25rem;
+  }
+
+  .account-meta {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-3);
+    margin: 0;
+  }
+
+  .account-actions {
+    flex-shrink: 0;
+  }
+
+  /* Profiles grid */
+  .profiles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .profile-card {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    transition: border-color var(--duration-fast) ease;
+  }
+
+  .profile-card--active {
+    border-color: var(--color-accent-from);
+  }
+
+  .profile-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .profile-card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .profile-card-name {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex-wrap: wrap;
+  }
+
+  .profile-kids-badge,
+  .profile-active-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.1rem 0.375rem;
+    border-radius: var(--radius-full);
+  }
+
+  .profile-kids-badge {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--color-success);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+  }
+
+  .profile-active-badge {
+    background: rgba(66, 133, 244, 0.1);
+    color: #4285F4;
+    border: 1px solid rgba(66, 133, 244, 0.25);
+  }
+
+  .profile-card-meta {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-3);
+  }
+
+  .profile-switch-btn {
+    font-size: var(--font-size-xs);
+    padding: 0.3125rem 0.625rem;
+    flex-shrink: 0;
+  }
+
+  /* Add profile button */
+  .profile-add-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem;
+    background: transparent;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--duration-fast) ease;
+    font-family: inherit;
+    text-align: left;
+  }
+
+  .profile-add-btn:hover {
+    border-color: var(--color-accent-from);
+    background: var(--color-surface);
+  }
+
+  .profile-add-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--color-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-3);
+    flex-shrink: 0;
+  }
+
+  .profile-add-label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-2);
+  }
+
+  /* Dialog */
+  .profile-dialog {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    color: var(--color-text);
+    padding: 2rem;
+    width: 100%;
+    max-width: 420px;
+    font-family: var(--font-sans);
+  }
+
+  .profile-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+  }
+
+  .profile-dialog-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    margin: 0 0 1.5rem;
+    letter-spacing: var(--letter-spacing-tight);
+  }
+
+  .profile-dialog-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .profile-dialog-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .profile-dialog-label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-2);
+  }
+
+  .color-picker {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .color-swatch-label {
+    cursor: pointer;
+  }
+
+  .color-swatch-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .color-swatch {
+    display: block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    transition: border-color var(--duration-fast) ease;
+  }
+
+  .color-swatch-input:checked + .color-swatch {
+    border-color: white;
+    box-shadow: 0 0 0 2px var(--color-accent-from);
+  }
+
+  .profile-dialog-checkbox label {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-2);
+  }
+
+  .profile-dialog-check-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-2);
+    cursor: pointer;
+  }
+
+  .profile-dialog-check-label input {
+    accent-color: var(--color-accent-from);
+    width: 16px;
+    height: 16px;
+  }
+
+  .profile-dialog-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  /* Privacy */
+  .privacy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .privacy-item {
+    padding: 1.25rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .privacy-item-title {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+  }
+
+  .privacy-item-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .privacy-item-list li {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-3);
+    padding-left: 1rem;
+    position: relative;
+  }
+
+  .privacy-item-list li::before {
+    content: '·';
+    position: absolute;
+    left: 0.25rem;
+    color: var(--color-text-3);
+  }
+
+  .privacy-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .danger-btn {
+    color: var(--color-error) !important;
+  }
+
+  .danger-btn:hover {
+    background: rgba(238, 68, 68, 0.05) !important;
+    color: var(--color-error) !important;
+  }
+</style>

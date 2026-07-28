@@ -1,5 +1,46 @@
 {
+  "name": "absent-axis",
+  "type": "module",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "dev:nohmr": "NO_HMR=1 astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
   "dependencies": {
-    "framer-motion": "^12.42.2"
+    "@ark-ui/react": "^5.37.2",
+    "@astrojs/cloudflare": "^14.1.4",
+    "@astrojs/react": "^6.0.1",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "arctic": "^3.7.0",
+    "astro": "^7.1.1",
+    "class-variance-authority": "^0.7.1",
+    "framer-motion": "^12.42.2",
+    "gsap": "^3.15.0",
+    "hls.js": "1.6.16",
+    "lucia": "^3.2.2",
+    "lucide-react": "^1.25.0",
+    "motion": "^12.42.2",
+    "oslo": "^1.2.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@cloudflare/workers-types": "^5.20260724.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.114.0"
   }
 }

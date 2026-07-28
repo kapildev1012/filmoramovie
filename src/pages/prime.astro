@@ -1,0 +1,100 @@
+---
+// src/pages/prime.astro — Prime Video hub page
+import Layout from '../layouts/Layout.astro';
+import Top10Rail from '../components/Top10Rail.astro';
+import MovieRail from '../components/MovieRail.astro';
+import HeroCarousel from '../components/react/HeroCarousel';
+import { getPlatformPageData } from '../lib/tmdb';
+
+let pageData: Awaited<ReturnType<typeof getPlatformPageData>> | null = null;
+let error: string | null = null;
+try {
+  pageData = await getPlatformPageData('prime');
+} catch (e) {
+  error = e instanceof Error ? e.message : 'Failed to load';
+}
+
+const heroSlides    = pageData?.heroSlides    ?? [];
+const top10TV       = pageData?.top10TV       ?? [];
+const top10Movies   = pageData?.top10Movies   ?? [];
+const popularTV     = pageData?.popularTV     ?? [];
+const popularMovies = pageData?.popularMovies ?? [];
+---
+
+<Layout title="Prime Video — Top 10 & Exclusives">
+  {heroSlides.length > 0 && (
+    <HeroCarousel client:load slides={heroSlides} label="Prime Video Top 10" />
+  )}
+
+  <div class="platform-page">
+    <div class="container">
+      <div class="platform-brand platform-brand--prime">
+        <div class="platform-logo-wrap">
+          <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+            <rect width="44" height="44" rx="10" fill="#00A8E0"/>
+            <text x="50%" y="58%" dominant-baseline="middle" text-anchor="middle" font-size="22" font-weight="900" font-family="Arial,sans-serif" fill="#fff">P</text>
+            <path d="M10 33 Q22 40 34 33" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="platform-name">Prime Video</h1>
+          <p class="platform-desc">Top shows, exclusives &amp; movies on Amazon Prime Video</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="platform-sections">
+      {top10TV.length > 0 && (
+        <div data-reveal>
+          <Top10Rail title="Top 10 Series on Prime Video" items={top10TV} mediaType="tv" accentColor="#00a8e0" />
+        </div>
+      )}
+      {top10Movies.length > 0 && (
+        <div data-reveal>
+          <Top10Rail title="Top 10 Movies on Prime Video" items={top10Movies} mediaType="movie" accentColor="#00a8e0" />
+        </div>
+      )}
+      {popularTV.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Popular Series" items={popularTV} mediaType="tv" />
+        </div>
+      )}
+      {popularMovies.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Popular Movies" items={popularMovies} mediaType="movie" />
+        </div>
+      )}
+      {!error && top10TV.length === 0 && top10Movies.length === 0 && (
+        <div class="platform-empty container">
+          <p>No Prime Video content found for your region right now.</p>
+        </div>
+      )}
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .platform-page { padding-bottom: 4rem; }
+  .platform-brand {
+    display: flex; align-items: center; gap: 1.25rem;
+    padding: 2rem 0 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .platform-logo-wrap {
+    width: 56px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px; flex-shrink: 0;
+  }
+  .platform-brand--prime .platform-logo-wrap { background: #00a8e0; }
+  .platform-name {
+    font-size: var(--font-size-2xl); font-weight: 700;
+    color: var(--color-text); margin: 0 0 0.2rem;
+    letter-spacing: var(--letter-spacing-tight);
+  }
+  .platform-desc { font-size: var(--font-size-sm); color: var(--color-text-3); margin: 0; }
+  .platform-sections {
+    display: flex; flex-direction: column;
+    gap: var(--section-gap, 2rem); padding-top: 1.5rem;
+  }
+  .platform-empty { padding: 4rem 0; color: var(--color-text-3); text-align: center; }
+</style>

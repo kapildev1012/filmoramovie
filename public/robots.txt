@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Keep private/account routes out of search results
+Disallow: /watchlist
+Disallow: /profile
+Disallow: /login
+Disallow: /api/
+
+Sitemap: https://filmoramovie.com/sitemap.xml

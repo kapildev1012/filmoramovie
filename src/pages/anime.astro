@@ -1,0 +1,296 @@
+---
+// src/pages/anime.astro — /anime browse page
+import Layout from '../layouts/Layout.astro';
+import MovieRail from '../components/MovieRail.astro';
+import PosterCard from '../components/PosterCard.astro';
+import HeroCarousel from '../components/react/HeroCarousel';
+import FilterPanel from '../components/react/FilterPanel';
+import Pagination from '../components/ui/pagination';
+import { getAnimePageData } from '../lib/tmdb';
+import type { TMDBSeriesBase } from '../lib/types';
+
+const url      = Astro.url;
+const page     = parseInt(url.searchParams.get('page') ?? '1');
+const sortBy   = url.searchParams.get('sort') ?? 'popularity.desc';
+const genres   = url.searchParams.get('genres') ?? '';
+const yearFrom = url.searchParams.get('year_from') ?? '';
+const yearTo   = url.searchParams.get('year_to') ?? '';
+const minRating = url.searchParams.get('min_rating') ?? '';
+
+let animeData: Awaited<ReturnType<typeof getAnimePageData>> | null = null;
+let error: string | null = null;
+
+try {
+  animeData = await getAnimePageData({ page, sortBy, genres, yearFrom, yearTo, minRating });
+} catch (err: unknown) {
+  error = err instanceof Error ? err.message : 'Failed to load anime';
+}
+
+const heroSlides   = animeData?.heroSlides ?? [];
+const animeGrid    = animeData?.grid.results ?? [];
+const totalPages   = Math.min(animeData?.grid.total_pages ?? 1, 500);
+const totalResults = animeData?.grid.total_results ?? 0;
+const genreList    = animeData?.genres ?? [];
+const topAiring    = animeData?.topAiring ?? [];
+const popular      = animeData?.popular ?? [];
+const romance      = animeData?.romance ?? [];
+const actionAnime  = animeData?.action ?? [];
+const scifiAnime   = animeData?.scifi ?? [];
+const upcoming     = animeData?.upcoming ?? [];
+
+// Pagination is handled by the Ark UI <Pagination> island (URL-driven).
+const isFiltered = !!(genres || yearFrom || yearTo || minRating || sortBy !== 'popularity.desc');
+const initialFilters = {
+  genres: genres ? genres.split(',').map(Number) : [],
+  sortBy,
+  yearFrom,
+  yearTo,
+  minRating,
+  language: 'ja',
+};
+
+// Landscape backdrops (relevant to this page) for the shared cinematic gallery.
+const galleryImages: string[] = [...animeGrid, ...popular, ...topAiring]
+  .map((a: TMDBSeriesBase) => a?.backdrop_path)
+  .filter((p): p is string => Boolean(p))
+  .slice(0, 12)
+  .map((p) => `https://image.tmdb.org/t/p/w780${p}`);
+---
+
+<Layout title="Anime — Browse Japanese Animation" galleryImages={galleryImages}>
+
+  {/* ── Anime hero carousel ── */}
+  {heroSlides.length > 0 && (
+    <HeroCarousel client:load slides={heroSlides} label="Top Anime" />
+  )}
+
+  {/* ── Genre rails (only shown on first unfiltered page) ── */}
+  {!isFiltered && page === 1 && !error && (
+    <div class="anime-rails">
+
+      {topAiring.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Top Airing" viewAllHref="/anime?sort=vote_average.desc" items={topAiring} mediaType="tv" />
+        </div>
+      )}
+
+      {popular.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Most Popular" viewAllHref="/anime?sort=vote_count.desc" items={popular} mediaType="tv" />
+        </div>
+      )}
+
+      {actionAnime.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Action Anime" viewAllHref="/anime?genres=16,28" items={actionAnime} mediaType="tv" />
+        </div>
+      )}
+
+      {romance.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Romance" viewAllHref="/anime?genres=16,10749" items={romance} mediaType="tv" />
+        </div>
+      )}
+
+      {scifiAnime.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Sci-Fi & Fantasy" viewAllHref="/anime?genres=16,10765" items={scifiAnime} mediaType="tv" />
+        </div>
+      )}
+
+      {upcoming.length > 0 && (
+        <div data-reveal>
+          <MovieRail title="Recently Added" viewAllHref="/anime?sort=first_air_date.desc" items={upcoming} mediaType="tv" />
+        </div>
+      )}
+
+    </div>
+  )}
+
+  {/* ── Browse grid ── */}
+  <div class="container browse-page">
+    <div class="browse-header">
+      <h1 class="browse-title">
+        <span class="anime-cherry">🌸</span> Anime
+      </h1>
+      {!error && (
+        <p class="browse-count">{totalResults.toLocaleString()} shows</p>
+      )}
+    </div>
+
+    <FilterPanel
+      client:idle
+      genres={genreList}
+      initialFilters={initialFilters}
+      mediaType="tv"
+    />
+
+    {error ? (
+      <div class="browse-error">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <p class="browse-error-msg">Failed to load anime. Please try again.</p>
+        <a href="/anime" class="btn btn-secondary">Reset filters</a>
+      </div>
+    ) : animeGrid.length === 0 ? (
+      <div class="browse-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <h2 class="browse-empty-title">No anime found</h2>
+        <p class="browse-empty-desc">Try adjusting your filters or <a href="/anime" class="browse-empty-link">clear all</a>.</p>
+      </div>
+    ) : (
+      <>
+        <div class="poster-grid" role="list" aria-label="Anime grid" data-reveal>
+          {animeGrid.map((show) => (
+            <div role="listitem">
+              <PosterCard
+                id={show.id}
+                title={show.name}
+                mediaType="tv"
+                posterPath={show.poster_path}
+                backdropPath={show.backdrop_path}
+                releaseDate={show.first_air_date}
+                voteAverage={show.vote_average}
+                overview={show.overview}
+              />
+            </div>
+          ))}
+        </div>
+
+        <Pagination
+          client:load
+          totalPages={totalPages}
+          page={page}
+          basePath="/anime"
+          search={url.search}
+        />
+      </>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .anime-rails {
+    padding-top: 1.25rem;
+    padding-bottom: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap, 2rem);
+  }
+
+  .browse-page {
+    padding-top: 2.5rem;
+    padding-bottom: 4rem;
+  }
+
+  .browse-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .browse-title {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--color-text);
+    letter-spacing: var(--letter-spacing-tight);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .anime-cherry { font-style: normal; }
+
+  .browse-count { font-size: var(--font-size-sm); color: var(--color-text-3); margin: 0; }
+
+  .poster-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    column-gap: 1.5rem;
+    row-gap: 2rem;
+  }
+
+  @media (min-width: 640px) {
+    .poster-grid {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      column-gap: 1.75rem;
+      row-gap: 2.25rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .poster-grid {
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      column-gap: 2rem;
+      row-gap: 2.5rem;
+    }
+  }
+
+  .browse-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 4rem 0;
+    text-align: center;
+    color: var(--color-text-3);
+  }
+  .browse-error-msg { font-size: var(--font-size-base); color: var(--color-text-2); margin: 0; }
+
+  .browse-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 5rem 0;
+    text-align: center;
+    color: var(--color-text-3);
+  }
+  .browse-empty-title { font-size: var(--font-size-xl); font-weight: 600; color: var(--color-text); margin: 0; }
+  .browse-empty-desc  { font-size: var(--font-size-sm); color: var(--color-text-2); margin: 0; }
+  .browse-empty-link  { color: var(--color-accent-from); text-decoration: none; }
+  .browse-empty-link:hover { text-decoration: underline; }
+
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 3rem;
+    flex-wrap: wrap;
+  }
+  .pagination-btn { display: flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; }
+  .pagination-pages { display: flex; gap: 0.25rem; }
+
+  .pagination-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-2);
+    text-decoration: none;
+    transition: all var(--duration-fast) ease;
+    border: 1px solid transparent;
+  }
+  .pagination-page:hover {
+    color: var(--color-text);
+    background: var(--color-surface-2);
+    border-color: var(--color-border);
+  }
+  .pagination-page--active {
+    background: linear-gradient(135deg, var(--color-accent-from), var(--color-accent-to));
+    color: #fff;
+    border-color: transparent;
+    pointer-events: none;
+  }
+</style>

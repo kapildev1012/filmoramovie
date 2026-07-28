@@ -1,0 +1,290 @@
+---
+// src/pages/privacy.astro — Privacy Policy
+import Layout from '../layouts/Layout.astro';
+const updated = '2026-07-20';
+---
+
+<Layout title="Privacy Policy — Filmora Movie">
+  <div class="container legal-page">
+    <div class="legal-header">
+      <h1 class="legal-title">Privacy Policy</h1>
+      <p class="legal-updated">Last updated: {updated}</p>
+    </div>
+
+    <div class="legal-body">
+      <section class="legal-section">
+        <h2>1. Who we are</h2>
+        <p>
+          Filmora Movie (<strong>filmoramovie.com</strong>) is a movie and TV series discovery platform.
+          We aggregate metadata, watch-provider information, cast/crew data, and official trailers
+          from <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">The Movie Database (TMDB)</a>.
+          We do not host, stream, or distribute any video content.
+        </p>
+      </section>
+
+      <section class="legal-section">
+        <h2>2. What data we collect</h2>
+        <p>We collect only what is necessary to provide the service:</p>
+
+        <h3>2.1 When you sign in</h3>
+        <ul>
+          <li>Your Google account <strong>name</strong> and <strong>email address</strong>, provided by Google after you grant permission via OAuth 2.0.</li>
+          <li>Your Google profile photo URL (optional, displayed as your avatar).</li>
+          <li>A unique internal identifier linked to your Google account ID.</li>
+        </ul>
+
+        <h3>2.2 When you use the app</h3>
+        <ul>
+          <li><strong>Watchlist entries</strong>: TMDB ID, media type (movie/TV), title, and poster image path for each title you save.</li>
+          <li><strong>Ratings</strong>: Your 1–5 star rating for each title you rate, stored against your profile.</li>
+          <li><strong>Profile preferences</strong>: Profile name, chosen avatar color, and kids-mode flag.</li>
+        </ul>
+
+        <h3>2.3 Cookies we set</h3>
+        <table class="privacy-table">
+          <thead>
+            <tr>
+              <th>Cookie name</th>
+              <th>Purpose</th>
+              <th>Duration</th>
+              <th>Required</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>filmora_session</code></td>
+              <td>Authenticates your signed-in session. HttpOnly, Secure, SameSite=Lax.</td>
+              <td>30 days (rolling)</td>
+              <td>Yes — without it you cannot stay signed in</td>
+            </tr>
+            <tr>
+              <td><code>filmora_consent</code></td>
+              <td>Stores your cookie consent choice (all / essential).</td>
+              <td>1 year</td>
+              <td>Yes — needed to remember your preference</td>
+            </tr>
+            <tr>
+              <td><code>filmora_consent_prefs</code></td>
+              <td>Stores your granular preference (analytics on/off).</td>
+              <td>1 year</td>
+              <td>Only if you chose "Customize"</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>We do not set advertising cookies, cross-site tracking cookies, or share cookie data with third parties.</p>
+
+        <h3>2.4 Analytics (opt-in only)</h3>
+        <p>If you opt in to analytics, we collect anonymous page-view counts using a self-hosted or privacy-first analytics tool. No personal identifiers, no cross-site tracking, no advertising profiles.</p>
+      </section>
+
+      <section class="legal-section">
+        <h2>3. What we do NOT collect</h2>
+        <ul>
+          <li>Passwords or payment card numbers</li>
+          <li>Your viewing history on Netflix, Amazon, Hotstar, or any other streaming service</li>
+          <li>Location data</li>
+          <li>Device fingerprinting data</li>
+          <li>Third-party advertising identifiers</li>
+        </ul>
+      </section>
+
+      <section class="legal-section">
+        <h2>4. How we use your data</h2>
+        <ul>
+          <li>To authenticate you and maintain your session</li>
+          <li>To display and sync your watchlist and ratings across your devices</li>
+          <li>To personalise profile names and avatar colors</li>
+          <li>To improve the service (if analytics opt-in is granted)</li>
+        </ul>
+        <p>We do not sell, rent, or share your personal data with third parties for marketing purposes.</p>
+      </section>
+
+      <section class="legal-section">
+        <h2>5. Third-party services</h2>
+        <ul>
+          <li><strong>TMDB API</strong> — all movie/TV metadata, images, and provider data is fetched from <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">themoviedb.org</a>. TMDB's <a href="https://www.themoviedb.org/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> applies to their services.</li>
+          <li><strong>Google OAuth</strong> — sign-in only. Google's <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> governs the sign-in flow.</li>
+          <li><strong>YouTube embeds</strong> — official trailers are embedded via YouTube's nocookie domain (<code>youtube-nocookie.com</code>). YouTube's <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> applies.</li>
+          <li><strong>Watch providers</strong> — provider logos and deep-link URLs are provided by JustWatch via TMDB. Clicking a provider link takes you to a third-party site governed by that site's own privacy policy.</li>
+        </ul>
+      </section>
+
+      <section class="legal-section">
+        <h2>6. Data retention and deletion</h2>
+        <p>
+          Your data is retained for as long as your account exists. You can request full deletion by:
+        </p>
+        <ul>
+          <li>Using the <strong>"Delete account"</strong> button on your <a href="/profile">Profile</a> page, which permanently removes all your data from our database.</li>
+          <li>Emailing <a href="mailto:privacy@filmoramovie.com">privacy@filmoramovie.com</a> with a deletion request.</li>
+        </ul>
+        <p>We will process deletion requests within 30 days.</p>
+      </section>
+
+      <section class="legal-section">
+        <h2>7. Your rights</h2>
+        <p>Depending on your jurisdiction, you may have the right to:</p>
+        <ul>
+          <li>Access the personal data we hold about you</li>
+          <li>Rectify inaccurate data</li>
+          <li>Request erasure ("right to be forgotten")</li>
+          <li>Data portability (export your watchlist)</li>
+          <li>Withdraw consent for optional data processing at any time</li>
+        </ul>
+        <p>To exercise these rights, email <a href="mailto:privacy@filmoramovie.com">privacy@filmoramovie.com</a>.</p>
+      </section>
+
+      <section class="legal-section">
+        <h2>8. TMDB attribution</h2>
+        <p>
+          This product uses the TMDB API but is not endorsed or certified by TMDB.
+          Movie and TV data, images, and watch provider information are provided by
+          <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">The Movie Database (TMDB)</a>.
+        </p>
+        <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" class="tmdb-badge-link" aria-label="Powered by TMDB">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190.24 81.52" width="90" height="39" aria-hidden="true">
+            <defs><linearGradient id="p-tmdb" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#90cea1"/><stop offset="100%" stop-color="#01b4e4"/></linearGradient></defs>
+            <rect width="190.24" height="81.52" rx="10" fill="url(#p-tmdb)"/>
+            <text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="26" fill="#0d253f" letter-spacing="2">TMDB</text>
+          </svg>
+        </a>
+      </section>
+
+      <section class="legal-section">
+        <h2>9. Contact</h2>
+        <p>Questions about this policy? Email <a href="mailto:privacy@filmoramovie.com">privacy@filmoramovie.com</a>.</p>
+      </section>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .legal-page {
+    padding-top: calc(var(--nav-offset) + 2rem);
+    padding-bottom: 5rem;
+    max-width: 860px;
+  }
+
+  .legal-header {
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+  }
+
+  .legal-title {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--color-text);
+    letter-spacing: var(--letter-spacing-tight);
+    margin: 0 0 0.5rem;
+  }
+
+  .legal-updated {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-3);
+    margin: 0;
+  }
+
+  .legal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .legal-section {
+    padding: 2rem 0;
+  }
+
+  .legal-section h2 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 1rem;
+    letter-spacing: var(--letter-spacing-tight);
+  }
+
+  .legal-section h3 {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 1.5rem 0 0.5rem;
+  }
+
+  .legal-section p {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-2);
+    line-height: var(--line-height-loose);
+    margin: 0 0 1rem;
+  }
+
+  .legal-section ul {
+    margin: 0 0 1rem;
+    padding-left: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .legal-section li {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-2);
+    line-height: var(--line-height-normal);
+  }
+
+  .legal-section a {
+    color: var(--color-accent-from);
+    text-decoration: none;
+    text-underline-offset: 2px;
+  }
+
+  .legal-section a:hover {
+    text-decoration: underline;
+  }
+
+  .legal-section code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: var(--color-surface-2);
+    padding: 0.1em 0.35em;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-2);
+    border: 1px solid var(--color-border);
+  }
+
+  /* Cookie table */
+  .privacy-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+    margin: 1rem 0;
+  }
+
+  .privacy-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--color-text);
+    padding: 0.5rem 0.75rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+  }
+
+  .privacy-table td {
+    color: var(--color-text-2);
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-border);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 640px) {
+    .privacy-table { font-size: var(--font-size-xs); }
+  }
+
+  .tmdb-badge-link {
+    display: inline-block;
+    margin-top: 0.75rem;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+  }
+
+  .tmdb-badge-link:hover { opacity: 1; }
+</style>

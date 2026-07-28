@@ -1,0 +1,676 @@
+---
+// src/pages/movie/[id].astro — Movie detail page
+import Layout from '../../layouts/Layout.astro';
+import HeroCarousel from '../../components/react/HeroCarousel';
+import WatchNow from '../../components/WatchNow.astro';
+import MovieRail from '../../components/MovieRail.astro';
+import { CastGallery } from '../../components/ui/gallery';
+import { getMovieFull, getOfficialTrailerKey } from '../../lib/tmdb';
+import type { HeroSlide } from '../../lib/tmdb';
+import type { TMDBCastMember } from '../../lib/types';
+
+const { id } = Astro.params;
+
+if (!id || isNaN(parseInt(id))) {
+  return Astro.redirect('/movies');
+}
+
+let data: Awaited<ReturnType<typeof getMovieFull>> | null = null;
+let error: string | null = null;
+let notFound = false;
+
+try {
+  // One TMDB request (append_to_response) returns details + credits + videos +
+  // providers + recommendations, so there is no fan-out left to fail partially.
+  data = await getMovieFull(id);
+} catch (e) {
+  const msg = e instanceof Error ? e.message : '';
+  if (msg.includes('404')) {
+    notFound = true;
+  } else {
+    error = msg || 'Failed to load movie';
+  }
+}
+
+if (notFound) {
+  return Astro.redirect('/movies');
+}
+
+// If the fetch failed, ensure we have an error message and skip derivations.
+if (!data) {
+  error = error || 'Failed to load movie';
+}
+
+const movie          = data?.movie;
+const credits        = data?.credits;
+const videos         = data?.videos;
+
+const trailerKey = videos ? getOfficialTrailerKey(videos) : null;
+
+// Recommendations ("More Like This") arrive with the detail bundle.
+const recommendations = data?.recommendations?.results.slice(0, 20) ?? [];
+
+// The first few double as the player's end-card tiles ("More like this" after
+// the credits), so the viewer always has somewhere to go next.
+const relatedForPlayer = recommendations.slice(0, 6).map((item) => ({
+  id: item.id,
+  title: item.title ?? '',
+  posterUrl: item.poster_path ? `https://image.tmdb.org/t/p/w185${item.poster_path}` : null,
+  href: `/movie/${item.id}`,
+}));
+
+const TMDB_IMG = 'https://image.tmdb.org/t/p';
+const backdropUrl = movie?.backdrop_path ? `${TMDB_IMG}/w1280${movie.backdrop_path}` : null;
+const posterUrl = movie?.poster_path ? `${TMDB_IMG}/w500${movie.poster_path}` : null;
+
+const cast = credits?.cast.slice(0, 20) ?? [];
+const castPhotos = cast
+  .filter((c) => c.profile_path)
+  .slice(0, 5)
+  .map((c) => ({ src: `https://image.tmdb.org/t/p/w185${c.profile_path}`, alt: c.name, name: c.name }));
+const runtime = movie?.runtime
+  ? `${Math.floor(movie.runtime / 60)}h ${movie.runtime % 60}m`
+  : null;
+const releaseYear = movie?.release_date?.slice(0, 4);
+const rating = movie?.vote_average ? Math.round(movie.vote_average * 10) / 10 : null;
+
+// Build a single cinematic hero slide so the detail page opens with the
+// exact same HeroCarousel used on the /movies browse page.
+const heroSlide: HeroSlide | null = movie
+  ? {
+      id: movie.id,
+      mediaType: 'movie',
+      title: movie.title,
+      overview: movie.overview,
+      backdropUrl,
+      posterUrl,
+      releaseYear: releaseYear ?? '',
+      rating: rating ?? 0,
+      genres: (movie.genres ?? []).map((g) => g.name).slice(0, 3),
+      runtime,
+      href: trailerKey ? '#trailer' : '#watch',
+    }
+  : null;
+
+// Landscape backdrops (this title + recommendations) for the shared gallery.
+const galleryImages: string[] = [
+  ...(movie?.backdrop_path ? [movie.backdrop_path] : []),
+  ...recommendations.map((r) => r.backdrop_path),
+]
+  .filter(Boolean)
+  .slice(0, 12)
+  .map((p) => `${TMDB_IMG}/w780${p}`);
+---
+
+<Layout
+  title={movie ? `${movie.title}${releaseYear ? ` (${releaseYear})` : ''}` : 'Movie'}
+  description={movie?.overview || movie?.tagline || 'Movie details'}
+  image={backdropUrl ?? posterUrl}
+  galleryImages={galleryImages}
+>
+  <Fragment slot="head">
+    {/* Resource hints for the streaming providers the player can actually pick
+         (see lib/embed.ts). Kept identical on the series page so the first frame
+         arrives just as fast for a show as for a film. vidsrc.to / 2embed.cc are
+         retired and were removed — a hint to a host we never contact only costs
+         a DNS lookup. */}
+    <link rel="dns-prefetch" href="https://www.vidking.net" />
+    <link rel="dns-prefetch" href="https://vidlink.pro" />
+    <link rel="dns-prefetch" href="https://player.videasy.net" />
+    <link rel="dns-prefetch" href="https://vidfast.pro" />
+    <link rel="dns-prefetch" href="https://api.codespecters.com" />
+  </Fragment>
+  {error || !movie ? (
+    <div class="detail-error container">
+      <div class="detail-error-inner">
+        <h1>Failed to load</h1>
+        <p>{error}</p>
+        <a href="/movies" class="btn btn-secondary">Back to Movies</a>
+      </div>
+    </div>
+  ) : (
+    <article>
+      {/* ── Cinematic hero — identical to the /movies browse hero ── */}
+      {heroSlide && (
+        <HeroCarousel client:load slides={[heroSlide]} label={heroSlide.title} />
+      )}
+
+      <div class="detail-body container">
+        {/* ── Watch (shared player section) ── */}
+        <WatchNow
+          mediaType="movie"
+          id={movie.id}
+          title={movie.title}
+          backdropUrl={backdropUrl ?? posterUrl}
+          posterUrl={posterUrl}
+          trailerKey={trailerKey}
+          related={relatedForPlayer}
+        />
+
+        {/* ── Trailer ── */}
+        {trailerKey && (
+          <section class="detail-section detail-hide-mobile" id="trailer" data-reveal aria-labelledby="trailer-heading">
+            <h2 class="detail-section-title" id="trailer-heading">Trailer</h2>
+            <div class="trailer-wrap">
+              <iframe
+                src={`https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1`}
+                title={`${movie.title} — Official Trailer`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen
+                loading="lazy"
+                class="trailer-iframe"
+              />
+            </div>
+          </section>
+        )}
+
+        {/* ── Cast ── */}
+        {cast.length > 0 && (
+          <section class="detail-section detail-hide-mobile" data-reveal aria-labelledby="cast-heading">
+            <h2 class="detail-section-title" id="cast-heading">Cast</h2>
+            {castPhotos.length > 0 && (
+              <div class="cast-gallery-mobile">
+                <CastGallery client:visible photos={castPhotos} />
+              </div>
+            )}
+            <div class="cast-grid" role="list">
+              {cast.map((member: TMDBCastMember) => (
+                <div class="cast-card" role="listitem">
+                  <div class="cast-avatar">
+                    {member.profile_path ? (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w185${member.profile_path}`}
+                        alt={member.name}
+                        class="cast-avatar-img"
+                        loading="lazy"
+                        width="80"
+                        height="120"
+                      />
+                    ) : (
+                      <div class="cast-avatar-placeholder" aria-hidden="true">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                          <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div class="cast-info">
+                    <span class="cast-name">{member.name}</span>
+                    <span class="cast-character">{member.character}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Details ── */}
+        <section class="detail-section detail-hide-mobile" data-reveal aria-labelledby="details-heading">
+          <h2 class="detail-section-title" id="details-heading">Details</h2>
+          <dl class="detail-facts">
+            {movie.status && (
+              <>
+                <dt>Status</dt>
+                <dd>{movie.status}</dd>
+              </>
+            )}
+            {movie.original_title !== movie.title && (
+              <>
+                <dt>Original title</dt>
+                <dd>{movie.original_title}</dd>
+              </>
+            )}
+            {movie.budget > 0 && (
+              <>
+                <dt>Budget</dt>
+                <dd>${movie.budget.toLocaleString()}</dd>
+              </>
+            )}
+            {movie.revenue > 0 && (
+              <>
+                <dt>Revenue</dt>
+                <dd>${movie.revenue.toLocaleString()}</dd>
+              </>
+            )}
+            {movie.production_countries.length > 0 && (
+              <>
+                <dt>Countries</dt>
+                <dd>{movie.production_countries.map((c) => c.name).join(', ')}</dd>
+              </>
+            )}
+            {movie.spoken_languages.length > 0 && (
+              <>
+                <dt>Languages</dt>
+                <dd>{movie.spoken_languages.map((l) => l.english_name).join(', ')}</dd>
+              </>
+            )}
+          </dl>
+        </section>
+      </div>
+
+      {recommendations.length > 0 && (
+        <div class="detail-related" data-reveal>
+          <MovieRail title="More Like This" items={recommendations} mediaType="movie" />
+        </div>
+      )}
+    </article>
+  )}
+</Layout>
+
+<style>
+  /* ── Hero — backdrop matched to HeroCarousel exactly ── */
+  .detail-hero {
+    position: relative;
+    min-height: 70vh;
+    display: flex;
+    align-items: flex-end;
+    padding-bottom: 3rem;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .detail-backdrop {
+    position: absolute;
+    inset: 0;
+  }
+
+  .detail-backdrop-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 20%;
+    animation: detail-kenburns 6s ease-out forwards;
+  }
+  @keyframes detail-kenburns {
+    from { transform: scale(1.06); }
+    to   { transform: scale(1); }
+  }
+
+  /* Bottom vignette — matches HeroCarousel .nf-grad-bottom */
+  .detail-backdrop-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to top,
+      #000 0%,
+      rgba(0,0,0,0.9) 18%,
+      rgba(0,0,0,0.5) 45%,
+      rgba(0,0,0,0.1) 75%,
+      transparent 100%
+    );
+  }
+
+  /* Top fade — matches HeroCarousel .nf-grad-top */
+  .detail-backdrop::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+    pointer-events: none;
+  }
+
+  /* Left-side cinematic gradient — matches HeroCarousel .nf-grad-left */
+  .detail-hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to right,
+      rgba(0,0,0,0.85) 0%,
+      rgba(0,0,0,0.45) 35%,
+      transparent 65%
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .detail-backdrop-img { animation: none; }
+  }
+
+  .detail-hero-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 2.5rem;
+    align-items: flex-end;
+    /* Push content below the transparent fixed navbar */
+    padding-top: var(--nav-offset);
+  }
+
+  .detail-poster {
+    width: 200px;
+    flex-shrink: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    display: none;
+  }
+
+  @media (min-width: 768px) {
+    .detail-poster { display: block; }
+  }
+
+  .detail-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .detail-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-3);
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .detail-breadcrumb-link {
+    color: var(--color-text-3);
+    text-decoration: none;
+    transition: color var(--duration-fast) ease;
+  }
+
+  .detail-breadcrumb-link:hover {
+    color: var(--color-text);
+  }
+
+  .detail-title {
+    font-size: clamp(1.75rem, 4vw, 3rem);
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: var(--letter-spacing-tight);
+    margin: 0 0 0.375rem;
+    line-height: 1.1;
+  }
+
+  .detail-title-year {
+    font-size: 0.7em;
+    font-weight: 400;
+    opacity: 0.7;
+    margin-left: 0.375rem;
+  }
+
+  .detail-tagline {
+    font-size: var(--font-size-base);
+    font-style: italic;
+    color: rgba(255,255,255,0.6);
+    margin: 0 0 0.75rem;
+  }
+
+  .detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  .detail-meta-item {
+    font-size: var(--font-size-sm);
+    color: rgba(255,255,255,0.7);
+  }
+
+  .detail-rating {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--color-success) !important;
+    font-weight: 600;
+  }
+
+  .detail-rating-count {
+    font-weight: 400;
+    opacity: 0.7;
+  }
+
+  .detail-genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .detail-genre-chip {
+    text-decoration: none;
+    color: rgba(255,255,255,0.75);
+    border-color: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.05);
+    transition: all var(--duration-fast) ease;
+  }
+
+  .detail-genre-chip:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+
+  .detail-overview {
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-normal);
+    color: rgba(255,255,255,0.85);
+    margin: 0 0 1.5rem;
+    max-width: 640px;
+  }
+
+  .detail-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-play-btn {
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    box-shadow: 0 4px 24px rgba(99,102,241,0.45);
+  }
+  .detail-play-btn:hover { box-shadow: 0 8px 32px rgba(99,102,241,0.65); }
+
+  .detail-credits-summary {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+    font-size: var(--font-size-sm);
+  }
+
+  .detail-credits-summary dt {
+    color: rgba(255,255,255,0.5);
+    font-weight: 500;
+  }
+
+  .detail-credits-summary dd {
+    color: rgba(255,255,255,0.85);
+    margin: 0;
+  }
+
+  /* ── Body ── */
+  .detail-body {
+    padding-top: 3rem;
+    padding-bottom: 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .detail-related { padding-bottom: 3rem; }
+
+  .detail-section {
+    margin-bottom: 3rem;
+  }
+
+  /* Hide Trailer, Cast and Details sections on mobile (<768px). */
+  @media (max-width: 767px) {
+    .detail-hide-mobile { display: none !important; }
+  }
+
+  .detail-section-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: var(--letter-spacing-tight);
+    margin: 0 0 1.25rem;
+  }
+
+  /* Trailer — full screen height, 16:9 width, centred */
+  .trailer-wrap {
+    position: relative;
+    height: min(75vh, 720px);
+    width: min(calc(min(75vh, 720px) * 16 / 9), 100%);
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+  }
+
+  .trailer-iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  /* Cast */
+  /* Mobile: interactive fan gallery. Tablet + desktop: 3D gallery. */
+  .cast-gallery-mobile { display: none; }
+  .cast-gallery-desktop { display: none; }
+
+  @media (max-width: 767px) {
+    .cast-gallery-mobile { display: block; }
+  }
+  @media (min-width: 768px) {
+    .cast-gallery-desktop { display: block; }
+  }
+
+  /* 3D cast gallery (desktop + tablet only) — sized to match the homepage
+     FeaturedGallery section height. */
+  .cast-3d-canvas {
+    width: 100%;
+    height: clamp(360px, 70svh, 100svh);
+    border-radius: var(--radius-lg, 14px);
+    overflow: hidden;
+    background: var(--color-surface-2);
+  }
+  .cast-3d-hint {
+    text-align: center;
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-3);
+    margin: 0.75rem 0 0;
+  }
+
+  /* Static grid kept only as a hidden SEO / no-WebGL fallback */
+  .cast-grid { display: none !important; }
+
+  .cast-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+  }
+
+  @media (min-width: 768px) {
+    .cast-grid {
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    }
+  }
+
+  .cast-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .cast-avatar {
+    aspect-ratio: 2/3;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--color-surface-2);
+  }
+
+  .cast-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .cast-avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-3);
+  }
+
+  .cast-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .cast-name {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text);
+    line-height: 1.2;
+  }
+
+  .cast-character {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-3);
+    line-height: 1.2;
+  }
+
+  /* Facts */
+  .detail-facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1.5rem;
+    margin: 0;
+    font-size: var(--font-size-sm);
+  }
+
+  .detail-facts dt {
+    color: var(--color-text-3);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .detail-facts dd {
+    color: var(--color-text-2);
+    margin: 0;
+  }
+
+  /* Error */
+  .detail-error {
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .detail-error-inner {
+    text-align: center;
+    max-width: 400px;
+  }
+
+  .detail-error-inner h1 {
+    font-size: var(--font-size-2xl);
+    margin: 0 0 0.75rem;
+  }
+
+  .detail-error-inner p {
+    color: var(--color-text-2);
+    margin: 0 0 2rem;
+  }
+</style>
