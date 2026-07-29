@@ -116,7 +116,15 @@ const galleryImages: string[] = [
          (see lib/embed.ts). Kept identical on the series page so the first frame
          arrives just as fast for a show as for a film. vidsrc.to / 2embed.cc are
          retired and were removed — a hint to a host we never contact only costs
-         a DNS lookup. */}
+         a DNS lookup.
+
+         vidsrc.in gets a full `preconnect` (DNS + TCP + TLS), not just a DNS
+         hint: it is the default automatic pick (PROVIDER_PREFERENCE rank 0 in
+         serverRanking.ts), so warming its connection here means the iframe's
+         first request skips the handshake and the first frame arrives sooner.
+         The rest keep the cheaper dns-prefetch — preconnecting to five origins
+         the viewer will not use would waste connections the browser then closes. */}
+    <link rel="preconnect" href="https://vidsrc.in" crossorigin />
     <link rel="dns-prefetch" href="https://vidsrc.in" />
     <link rel="dns-prefetch" href="https://www.vidking.net" />
     <link rel="dns-prefetch" href="https://vidlink.pro" />

@@ -6,17 +6,18 @@
 //                       closable with Escape or the close button.
 //   variant="inline"  — the same list below the player for browsing without
 //                       covering the video, which is what a discovery page wants.
-//                       On phones this variant swaps the list for a stagger deck
-//                       (EpisodeDeck) — one card in focus, its neighbours angled
-//                       behind it — because a 24-row list buries the rest of the
-//                       page on a 390px screen.
+//                       This variant has three shapes: the spotlight hero
+//                       (EpisodeSpotlight) on phones and desktops, the list with
+//                       columns in between. A 24-row single-column list buries
+//                       the rest of the page on a 390px screen, so the phone gets
+//                       the hero — stacked, with the numbered strip as the picker.
 //
 // The current episode is marked with `aria-current` and scrolled into view when
 // the list opens, so a viewer 14 episodes deep does not land at the top.
 
 import { useEffect, useRef } from 'react';
 import { CloseIcon, PlayIcon } from './Icons';
-import EpisodeDeck from './EpisodeDeck';
+import EpisodeSpotlight from './EpisodeSpotlight';
 import type { PlayerT } from '../../../lib/player/strings';
 
 export interface SeasonOption {
@@ -66,6 +67,7 @@ export default function EpisodeOverlay({
   t,
 }: EpisodeOverlayProps) {
   const listRef = useRef<HTMLUListElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   // Bring the episode being watched into view when the panel appears.
   useEffect(() => {
@@ -74,12 +76,20 @@ export default function EpisodeOverlay({
     node?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
   }, [current, episodes.length]);
 
+  // Keep the active season tab visible in the horizontal scroller. With a long
+  // show (20+ seasons) the selected tab can sit far off the right edge, so
+  // centre it whenever the selection changes.
+  useEffect(() => {
+    const active = tabsRef.current?.querySelector<HTMLElement>('.fp-season-tab.is-active');
+    active?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }, [activeSeason]);
+
   return (
     <div className={variant === 'overlay' ? 'fp-episodes fp-episodes-overlay' : 'fp-episodes'}>
       <div className="fp-episodes-head">
         <h3 className="fp-menu-title">{t('episodes')}</h3>
         {seasons.length > 1 && (
-          <div className="fp-season-tabs" role="tablist" aria-label={t('season')}>
+          <div className="fp-season-tabs" role="tablist" aria-label={t('season')} ref={tabsRef}>
             {seasons.map((season) => {
               /* Season 0 is TMDB's "Specials" bucket, and for some titles it is
                  the only season that exists. "Season 0" would be wrong and
@@ -143,21 +153,22 @@ export default function EpisodeOverlay({
         <p className="fp-episodes-empty">{t('noEpisodes')}</p>
       ) : (
         <>
-          {/* Phones (inline variant only): the same episodes as a stagger deck.
-              Both presentations are in the DOM and swapped by a media query in
-              player.css rather than by a JS width check — a `matchMedia` in state
-              would render the wrong one for the first frame after hydration.
-              The deck only renders cards near its centre, so the extra markup is
-              a handful of nodes, not a second full list. */}
+          {/* The spotlight hero: the phone presentation AND the >=64rem one.
+              Visibility is decided by media queries in player.css — a CSS swap
+              rather than a JS width check — so the correct presentation is right
+              on the first frame after hydration, not one render late. */}
           {variant === 'inline' && (
-            <EpisodeDeck
-              season={activeSeason}
-              episodes={episodes}
-              current={current}
-              onPlay={onPlay}
-              t={t}
-            />
+            <div className="fp-ep-spotlight-wrap">
+              <EpisodeSpotlight
+                episodes={episodes}
+                seasonNumber={activeSeason}
+                current={current}
+                onPlay={onPlay}
+                t={t}
+              />
+            </div>
           )}
+
           <ul
             className={`fp-episode-list${variant === 'inline' ? ' fp-episode-list-wide' : ''}`}
             ref={listRef}

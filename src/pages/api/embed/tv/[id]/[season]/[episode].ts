@@ -1,13 +1,15 @@
 // src/pages/api/embed/tv/[id]/[season]/[episode].ts — TV episode embed proxy.
 //
 // Same contract as the movie route: resolve the provider server-side, 302 to it,
-// keep EMBED_API_KEY off the client. The requested server always wins — a failed
-// probe downgrades confidence, it never blocks playback.
+// keep EMBED_API_KEY off the client. The requested server always wins, so when
+// one is requested we 302 straight to its player WITHOUT probing — the probe
+// only ever added latency to a decision that was already made. It still runs, as
+// advice, when we have to choose the server ourselves.
 //
 // Query params:
 //   ?server=nexstream|vidlink|videasy|vidfast  (optional preference)
 import type { APIRoute } from 'astro';
-import { normalizeServer, resolveEmbedUrl } from '../../../../../../lib/embed';
+import { normalizeServer, resolveEmbedUrl, tvEmbedUrl } from '../../../../../../lib/embed';
 
 export const prerender = false;
 
@@ -40,6 +42,22 @@ export const GET: APIRoute = async ({ params, url }) => {
   }
 
   const requested = normalizeServer(url.searchParams.get('server'));
+
+  // FAST PATH: a chosen server wins whether or not a probe would confirm it, so
+  // skip the probe and redirect straight to the provider's player. Removes the
+  // probe round-trip (up to several seconds cold) from the first frame.
+  if (requested) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: tvEmbedUrl(id, season, episode, requested),
+        'X-Embed-Server': requested,
+        'X-Embed-Confirmed': '0',
+        'Cache-Control': 'private, no-store',
+        'Referrer-Policy': 'no-referrer',
+      },
+    });
+  }
 
   let resolved: Awaited<ReturnType<typeof resolveEmbedUrl>>;
   try {

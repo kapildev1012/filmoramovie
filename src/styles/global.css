@@ -195,11 +195,23 @@ html[data-theme="light"] .rail-arrow { background: rgba(255,255,255,0.9); border
 html[data-theme="light"] .rail-arrow:hover { background: #fff; }
 
 /* ── Poster cards ── */
-html[data-theme="light"] .poster-card-img-wrap { background: #e4e4e7; }
+/* The wrap is transparent in both themes (see PosterCard.astro): the artwork is
+   the card. Only the no-artwork placeholder gets a surface, and in light mode it
+   needs a dark-on-light one instead of the white wash the component ships. */
+html[data-theme="light"] .poster-card-img-wrap { background: transparent; }
+html[data-theme="light"] .poster-card-placeholder { background: rgba(0,0,0,0.06); }
 html[data-theme="light"] .poster-card-title { color: #18181b; }
 html[data-theme="light"] .poster-card-subtitle { color: #71717a; }
 html[data-theme="light"] .poster-card:hover .poster-card-img-wrap {
   box-shadow: 0 20px 44px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06);
+}
+/* On phones the card is defined by a hairline instead of a drop shadow (see
+   PosterCard.astro); the dark-theme white hairline is invisible on a light page. */
+@media (max-width: 767px) {
+  html[data-theme="light"] .poster-card-img-wrap,
+  html[data-theme="light"] .poster-card:hover .poster-card-img-wrap {
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+  }
 }
 
 /* ── Top10Rail rank numbers ── */

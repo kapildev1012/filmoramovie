@@ -276,13 +276,17 @@ export default function CardFanCarousel({ cards }: CardFanCarouselProps) {
       )}
 
       <style>{`
-        .fan-carousel { width: 100%; padding: 0.5rem 0 1rem; overflow: hidden; }
+        /* The top padding is headroom, not decoration: a hovered card lifts by
+           2.4rem and scales 1.075, and with overflow hidden (which is what stops
+           the fanned-out cards widening the page) that lift was sliced off the
+           top of the photo. */
+        .fan-carousel { width: 100%; padding: clamp(2.25rem, 4vw, 3.75rem) 0 1rem; overflow: hidden; }
         .fan-stage {
           position: relative; display: flex; align-items: flex-start; justify-content: center;
-          width: 100%; height: clamp(18rem, 40vw, 36rem); max-width: 80rem; margin-inline: auto;
+          width: 100%; height: clamp(21rem, 46vw, 40rem); max-width: 80rem; margin-inline: auto;
         }
         .fan-card {
-          position: absolute; display: block; width: clamp(8rem, 15vw, 12rem);
+          position: absolute; display: block; width: clamp(8.5rem, 18vw, 15rem);
           aspect-ratio: 2 / 3; overflow: hidden; border-radius: clamp(0.75rem, 1.4vw, 1.125rem);
           background: var(--color-surface-2); color: #fff; opacity: 0;
           border: 1px solid rgba(255,255,255,0.12);
@@ -309,9 +313,9 @@ export default function CardFanCarousel({ cards }: CardFanCarouselProps) {
         .fan-dots span { width: 0.38rem; height: 0.38rem; border-radius: 50%; background: color-mix(in srgb, var(--color-text) 18%, transparent); transition: transform 250ms ease, background 250ms ease; }
         .fan-dots span.is-active { background: var(--color-text); transform: scale(1.45); }
         @media (max-width: 639px) {
-          .fan-carousel { width: calc(100% + 2rem); margin-inline: -1rem; }
-          .fan-stage { height: 18.5rem; }
-          .fan-card { width: 8rem; border-radius: 0.8rem; }
+          .fan-carousel { width: calc(100% + 2rem); margin-inline: -1rem; padding-top: 1.5rem; }
+          .fan-stage { height: 21rem; }
+          .fan-card { width: 9.5rem; border-radius: 0.8rem; }
           .fan-card-copy { padding: 0.8rem 0.45rem 0.55rem; }
           .fan-card-copy b { font-size: 0.7rem; }
           .fan-card-copy small { font-size: 0.58rem; }

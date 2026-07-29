@@ -74,3 +74,31 @@ const {
     related={related}
   />
 </section>
+
+<style>
+  /* The detail pages style `.detail-section` / `.detail-section-title` in their
+     own <style> blocks, and Astro scopes those to the page's own elements — so
+     this section, which lives in a different component, was getting NONE of it:
+     no bottom margin (Cast sat flush against the player) and a default-sized
+     heading next to the styled "Cast" and "Details" ones. Same values, declared
+     where they actually apply. */
+  .detail-section {
+    margin-bottom: 3rem;
+  }
+
+  .detail-section-title {
+    margin: 0 0 1.25rem;
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: var(--letter-spacing-tight);
+  }
+
+  /* The player is the tallest thing on the page and the section under it starts
+     with a heading, so desktop gets a wider trough than the 3rem default. */
+  @media (min-width: 64rem) {
+    .detail-section {
+      margin-bottom: 4.5rem;
+    }
+  }
+</style>

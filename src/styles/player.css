@@ -43,6 +43,16 @@
   container-type: inline-size;
 }
 
+/* The island wrapper: the player (`.fp-root`) plus the inline episode browser.
+   It had no rule at all, so it was a plain block and the "Episodes" heading sat
+   flush against the source bar above it — the one gap in the page's vertical
+   rhythm, and the most obvious one on a phone where everything is stacked. */
+.fp-watchnow {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 /* ─────────────────────────────────────────────────────────────── Stage ─── */
 
 .fp-stage {
@@ -1903,7 +1913,26 @@
 
 /* ─────────────────────────────────────────────────────────── Episodes ─── */
 
+/* The episode block ships in two places: inside the stage as an overlay sheet,
+   and under the player as the inline browser. The inline one is a SIBLING of
+   `.fp-root` (see WatchNow.tsx), so none of the `--fp-*` tokens declared on
+   `.fp-root` reached it — every `var(--fp-accent-from)` / `var(--fp-ease)` below
+   was invalid at computed-value time, which is why the active season pill lost
+   its gradient fill and showed as bold white text on nothing. Declaring the
+   handful it needs here fixes both variants at once.
+
+   `container-type` is here for the same reason: the inline list's
+   `@container (min-width: 40rem)` had no query container outside `.fp-root`, so
+   it never matched and tablet widths were stuck in one column. */
 .fp-episodes {
+  --fp-accent-from: var(--color-accent-from, #4285f4);
+  --fp-accent-to: var(--color-accent-to, #a142f4);
+  --fp-ink: var(--color-text, #f5f5f5);
+  --fp-ink-dim: var(--color-text-2, #888);
+  --fp-btn-touch: 2.75rem;
+  --fp-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -1941,15 +1970,25 @@
    exactly the case where the picker matters most. */
 .fp-season-tabs {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  /* Own line, centred: the pills are the picker, not a trailing detail of the
-     "Episodes" heading they used to share a row with. */
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  /* Own full-width line. The seasons stay on ONE line and scroll horizontally
+     instead of wrapping into a tall stack — a show with 28 seasons wrapped into
+     six rows and pushed the episodes off-screen. Same behaviour on phone and
+     desktop. */
   flex: 1 1 100%;
-  /* Negative outer margin cancels the per-pill margin, so the row lines up with
-     its neighbours while the pills keep breathing room between each other. */
-  margin: -0.1875rem;
-  gap: 0;
+  gap: 0.375rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Momentum scrolling on iOS, and a little room under the pills so the thin
+     global scrollbar never clips them. */
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.3rem;
+  scroll-snap-type: x proximity;
+  /* Firefox: keep the scrollbar slim to match the global ::-webkit one. */
+  scrollbar-width: thin;
+  /* Let a trackpad's vertical gesture scroll the row horizontally. */
+  overscroll-behavior-x: contain;
 }
 
 .fp-season-tab {
@@ -1957,7 +1996,8 @@
   align-items: center;
   gap: 0.3rem;
   flex: none;
-  margin: 0.1875rem;
+  margin: 0;
+  scroll-snap-align: start;
   min-height: 2rem;
   padding: 0.3rem 0.8rem;
   border: 1px solid var(--color-border, #1f1f1f);
@@ -2146,18 +2186,30 @@
 }
 
 /* ─── Phones: inline episode browser ─────────────────────────────────────────
-   Below 40rem the inline list is replaced by the stagger deck (EpisodeDeck):
-   both are rendered, and this block decides which one is visible. The list stays
-   the ≥40rem presentation, where the container query gives it real columns; the
-   deck is the phone one, because a single-column list of 24 rows pushed the rest
-   of the page out of reach. The on-video overlay keeps the list at every width —
-   it is already a bottom sheet.
+   Below 40rem the inline list is replaced by the spotlight hero
+   (EpisodeSpotlight, which stacks at this width): both are rendered, and this
+   block decides which one is visible. The list stays the 40–64rem presentation,
+   where the container query gives it real columns; the phone gets the hero
+   because a single-column list of 24 rows pushed the rest of the page out of
+   reach, and the hero's numbered strip still reaches episode 23 in one tap. The
+   on-video overlay keeps the list at every width — it is already a bottom sheet.
 
    The season pills also grow to a 44px target here, in both variants' inline
    case, since they are the control a viewer hits most on a phone. */
 @media (max-width: 40rem) {
   .fp-episodes:not(.fp-episodes-overlay) {
-    gap: 0.85rem;
+    gap: 1rem;
+  }
+
+  /* The heading is the section's only label on a phone, so it gets a size that
+     reads as one, and its own line clear of the pills. */
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episodes-head {
+    gap: 0.7rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episodes-head .fp-menu-title {
+    font-size: 1rem;
+    letter-spacing: -0.01em;
   }
 
   .fp-episodes:not(.fp-episodes-overlay) .fp-season-tabs {
@@ -2175,12 +2227,70 @@
     display: none;
   }
 
-  .fp-episodes:not(.fp-episodes-overlay) .fp-epdeck {
-    display: flex;
+  .fp-episodes:not(.fp-episodes-overlay) .fp-ep-spotlight-wrap {
+    display: block;
   }
 }
 
-/* ─── Episode deck (phones) ──────────────────────────────────────────────────
+/* ─── Desktop: inline episodes become the split "spotlight" ──────────────────
+   At >=64rem the browsable grid is replaced by an editorial hero (EpisodeSpotlight):
+   the active episode's copy on the left, its still on the right, and a scrollable
+   number strip as the selector. The same component covers phones from the
+   max-width block above, where it stacks. Both presentations ship in the DOM and
+   a media query picks one, so hydration never flashes the wrong layout. Scoped to
+   the inline variant; the on-video overlay keeps its list at every width. */
+.fp-ep-spotlight-wrap {
+  display: none;
+}
+
+@media (min-width: 64rem) {
+  /* The player, the source bar and the episode hero are three separate blocks on
+     a big screen, and the hero is a tall one — 1rem between them read as one
+     crowded column. */
+  .fp-watchnow {
+    gap: 1.5rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) {
+    gap: 1.25rem;
+    /* A hairline is what separates the episode browser from the player's own
+       controls now that the page's Seasons accordion is phone-only. */
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--color-border, #1f1f1f);
+  }
+
+  /* Heading and season pills share one row here: there is room for both, and the
+     pills' own full-width line was dead space above a tall hero. */
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episodes-head {
+    flex-wrap: nowrap;
+    gap: 1.25rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episodes-head .fp-menu-title {
+    flex: none;
+    font-size: 1.05rem;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-season-tabs {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-ep-spotlight-wrap {
+    display: block;
+  }
+
+  .fp-episodes:not(.fp-episodes-overlay) .fp-episode-list-wide {
+    display: none;
+  }
+}
+
+/* ─── Episode deck (phones) — CURRENTLY UNUSED ───────────────────────────────
+   The phone presentation until the spotlight hero took that width too. Nothing
+   renders `.fp-epdeck` today (EpisodeOverlay stopped mounting EpisodeDeck), so
+   this block is inert; it is kept, with the component, because bringing the deck
+   back is one JSX element plus one `display: flex` in the max-width block above.
+
    A deck of clipped cards around one lifted centre card: the centre is the
    subject and is what Play acts on, the neighbours are visibly there without
    costing page height. Tapping a neighbour promotes it; swipe, arrow keys and
@@ -2205,8 +2315,24 @@
   /* The cards are absolutely positioned and rotated; clipping to the stage keeps
      the far ones from widening the page. */
   touch-action: pan-y;
+  /* …and this fades the neighbours out at the edges instead of slicing them off
+     with a hard vertical cut, which read as a rendering glitch. The fade stops
+     short of the 13%/87% marks where the centre card's edges sit, so only the
+     peeking neighbours are touched. */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 8%,
+    #000 92%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to right, transparent 0, #000 8%, #000 92%, transparent 100%);
 }
 
+/* NOTE: EpisodeDeck.tsx adds the card height up from the padding, gap and type
+   sizes declared in this block (see its `geometry` effect). Changing the padding
+   below, the 0.6rem stack gap, or any of the three body font sizes means
+   changing the matching number there, or the cards get dead space again. */
 .fp-epcard {
   position: absolute;
   left: 50%;
@@ -2218,7 +2344,10 @@
   border: 1px solid rgb(255 255 255 / 0.1);
   border-radius: 0;
   background: rgb(19 19 22 / 0.92);
-  color: var(--color-text, #f5f5f5);
+  /* Fixed light ink, not `--color-text`: the card is a dark object in both
+     themes (like the rest of the player chrome), so the site token would put
+     near-black text on a near-black surface in light mode. */
+  color: #f5f5f5;
   text-align: start;
   cursor: pointer;
   overflow: hidden;
@@ -2311,6 +2440,8 @@
 
 .fp-epcard-num {
   font-size: 0.64rem;
+  /* Explicit, because the deck's height maths assumes 1.4 for this line. */
+  line-height: 1.4;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -2370,17 +2501,20 @@
   height: var(--fp-btn-touch, 2.75rem);
   display: grid;
   place-items: center;
-  border: 1px solid rgb(255 255 255 / 0.14);
+  /* Same tokens as the season pills directly above, so the two controls belong
+     to the same row of furniture and both flip with the site theme. */
+  border: 1px solid var(--color-border, #1f1f1f);
   border-radius: 0;
   background: rgb(255 255 255 / 0.06);
-  color: var(--color-text, #f5f5f5);
+  color: var(--color-text-2, #888);
   cursor: pointer;
-  transition: background 160ms ease, transform 160ms ease;
+  transition: background 160ms ease, transform 160ms ease, color 160ms ease;
 }
 
 .fp-epdeck-arrow:active {
   transform: scale(0.94);
   background: rgb(255 255 255 / 0.14);
+  color: var(--color-text, #f5f5f5);
 }
 
 .fp-epdeck-arrow:focus-visible {
@@ -2530,14 +2664,21 @@
 
 /* ── Embed fullscreen/minimize control ────────────────────────────────────
    Third-party players own every playback control. Filmora adds only one small
-   centered screen-mode button; the wrapper never receives pointer events, so
-   every pixel except the button itself remains clickable in the iframe. */
+   screen-mode button; the wrapper never receives pointer events, so every pixel
+   except the button itself remains clickable in the iframe.
+
+   The button is pinned to the TOP-RIGHT, not the centre. Centred, it sat on top
+   of the provider's own centre play/pause and made the underlying controls feel
+   unreachable ("can't press the server/play button because of the fullscreen
+   button"). The provider's own chrome lives along the bottom bar and centre, so
+   the top-right corner is the one reliably clear zone across all five players. */
 .fp-embed-screen-control {
   position: absolute;
   inset: 0;
   z-index: 7;
   display: grid;
-  place-items: center;
+  place-items: start end;
+  padding: 0.6rem;
   pointer-events: none;
   opacity: 0;
   transition: opacity 180ms var(--fp-ease);
@@ -2587,6 +2728,10 @@
   .fp-watchnow {
     /* Falls back to 1rem when mobile.css tokens are absent. */
     --fp-bleed: var(--mob-pad-x, 1rem);
+    /* More air between the player, the source bar and the episode browser than
+       on desktop: they are one horizontal row of concerns up there and three
+       stacked blocks down here, so the gap is what separates them. */
+    gap: 1.35rem;
   }
 
   .fp-watchnow > .fp-root {
@@ -2626,7 +2771,9 @@
   .fp-sourcebar {
     flex-direction: column;
     align-items: stretch;
-    gap: 0.5rem;
+    /* Two full-width rows need more separation than two inline groups did:
+       0.5rem left the "Servers" caption reading as part of the engine row. */
+    gap: 0.8rem;
   }
 
   /* Engines stay a single segmented row; servers may wrap so the caption can
@@ -2634,12 +2781,13 @@
   .fp-sourcebar > .fp-source-group-engines {
     flex-wrap: nowrap;
     width: 100%;
+    gap: 0.4rem;
   }
 
   .fp-sourcebar > .fp-source-group-servers {
     flex-wrap: wrap;
     width: 100%;
-    gap: 0.4rem 0.5rem;
+    gap: 0.5rem 0.5rem;
   }
 
   /* Engine choice reads as a proper segmented control at full width. */

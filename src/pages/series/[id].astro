@@ -151,7 +151,10 @@ const galleryImages: string[] = [
 >
   <Fragment slot="head">
     {/* Identical to the movie page — same providers, same hints, so playback
-         start-up cost does not depend on whether the title is a film or a show. */}
+         start-up cost does not depend on whether the title is a film or a show.
+         vidsrc.in gets a full preconnect (it is the default auto pick) so its
+         TLS handshake is already warm when the iframe loads. */}
+    <link rel="preconnect" href="https://vidsrc.in" crossorigin />
     <link rel="dns-prefetch" href="https://vidsrc.in" />
     <link rel="dns-prefetch" href="https://www.vidking.net" />
     <link rel="dns-prefetch" href="https://vidlink.pro" />
@@ -188,9 +191,18 @@ const galleryImages: string[] = [
           related={relatedForPlayer}
         />
 
-        {/* ── Seasons / Episodes accordion ── */}
+        {/* ── Seasons / Episodes accordion ──
+             Phones only. On desktop the player's own episode browser (the
+             spotlight hero inside WatchNow) covers the same ground with stills,
+             synopses and a one-tap picker, so this accordion was a second, duller
+             copy of the same list directly under it. It stays for phones, where
+             it is the only way to see the whole season as text. */}
         {mainSeasons.length > 0 && (
-          <section class="detail-section" data-reveal aria-labelledby="seasons-heading">
+          <section
+            class="detail-section detail-hide-desktop"
+            data-reveal
+            aria-labelledby="seasons-heading"
+          >
             <h2 class="detail-section-title" id="seasons-heading">Seasons</h2>
             <div class="seasons-list">
               {mainSeasons.map((season: TMDBSeason) => (
@@ -425,6 +437,10 @@ const galleryImages: string[] = [
   /* Hide Trailer and Cast sections on mobile (<768px). */
   @media (max-width: 767px) {
     .detail-hide-mobile { display: none !important; }
+  }
+  /* …and the reverse, for sections the player already covers on a big screen. */
+  @media (min-width: 768px) {
+    .detail-hide-desktop { display: none !important; }
   }
   .detail-section-title { font-size: var(--font-size-xl); font-weight: 600; color: var(--color-text); letter-spacing: var(--letter-spacing-tight); margin: 0 0 1.25rem; }
 

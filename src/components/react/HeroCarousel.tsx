@@ -384,12 +384,11 @@ export default function HeroCarousel({ slides, label }: Props) {
           margin-bottom: 0.625rem;
           animation: nf-fade-up 0.5s ease backwards; animation-delay: 60ms;
         }
+        /* Plain text, no chip: the translucent box read as an empty block over
+           the artwork, especially where the backdrop behind it is already dark. */
         .nf-type-badge {
           font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.04em;
           color: rgba(255,255,255,0.85);
-          background: rgba(255,255,255,0.1);
-          border: 1px solid rgba(255,255,255,0.2);
-          padding: 0.2rem 0.5rem; border-radius: 4px;
           white-space: nowrap;
         }
         .nf-imdb {

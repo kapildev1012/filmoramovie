@@ -49,7 +49,7 @@ const quality = rating !== null && rating >= 8 ? '4K' : 'HD';
         loading="lazy"
         decoding="async"
         width={wide ? 780 : 500}
-        height={wide ? 439 : 750}
+        height={wide ? 439 : 857}
       />
     ) : (
       <div class="poster-card-placeholder" aria-hidden="true">
@@ -146,28 +146,49 @@ const quality = rating !== null && rating >= 8 ? '4K' : 'HD';
   .poster-card {
     flex-shrink: 0;
     width: 200px;
-    transition: transform 260ms var(--ease-out-fast);
     position: relative; /* needed so badges can absolute-position to card */
+    /* Apple "liquid glass" frame — a translucent black pane with a frosted
+       blur and a hairline highlight, wrapping the artwork and its caption.
+       The padding is the visible glass border; the artwork sits inside it. */
+    padding: 0.4rem 0.4rem 0.1rem;
+    border-radius: var(--radius-xl);
+    background: rgba(8, 8, 10, 0.42);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+                0 8px 24px rgba(0, 0, 0, 0.38);
+    transition: transform 260ms var(--ease-out-fast),
+                box-shadow 260ms var(--ease-out-fast),
+                border-color 260ms var(--ease-out-fast);
+  }
+  .poster-card:hover {
+    transform: translateY(-6px);
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+                0 22px 46px rgba(0, 0, 0, 0.55),
+                0 0 34px rgba(161, 66, 244, 0.28);
   }
   .poster-card--wide { width: 320px; }
 
   .poster-card-img-wrap {
     position: relative;
-    border-radius: var(--radius-lg);
+    /* Inner radius slightly tighter than the glass frame so the corners nest. */
+    border-radius: calc(var(--radius-xl) - 0.35rem);
     overflow: hidden;
-    background: var(--color-surface-2);
-    aspect-ratio: 2/3;
+    /* Transparent surface: the artwork is the card. A filled panel behind it
+       showed as a grey slab wherever the poster is missing, still loading, or
+       has transparency, and it fought the section backgrounds the rails sit on.
+       The placeholder below carries its own surface for the no-artwork case. */
+    background: transparent;
+    aspect-ratio: 7/12;
     transition: transform 260ms var(--ease-out-fast), box-shadow 260ms var(--ease-out-fast);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
   }
   .poster-card--wide .poster-card-img-wrap { aspect-ratio: 16/9; }
 
-  /* Lift on hover — translateY only, NO scale on the wrap */
-  .poster-card:hover .poster-card-img-wrap {
-    transform: translateY(-6px);
-    box-shadow: 0 20px 44px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06),
-                0 0 32px rgba(161,66,244,0.28);
-  }
+  /* Lift lives on the glass frame now, so the wrap itself no longer moves. */
 
   .poster-card-cover { position: absolute; inset: 0; z-index: 1; }
 
@@ -182,13 +203,16 @@ const quality = rating !== null && rating >= 8 ? '4K' : 'HD';
     width: 100%; height: 100%;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 0.75rem; padding: 1rem; color: var(--color-text-3);
+    /* The one case that needs a surface — an empty transparent box with a glyph
+       floating in it reads as a layout bug. */
+    background: rgba(255,255,255,0.05);
   }
   .poster-card-placeholder-text { font-size: var(--font-size-xs); text-align: center; color: var(--color-text-3); line-height: 1.3; }
 
   /* Badges — outside the scaling wrap, fixed to card top */
   .poster-card-badges {
     position: absolute;
-    top: 0.5rem; left: 0.5rem; right: 0.5rem;
+    top: 0.75rem; left: 0.75rem; right: 0.75rem;
     z-index: 10;
     display: flex; align-items: center; justify-content: space-between; gap: 0.25rem;
     pointer-events: none;
@@ -242,8 +266,8 @@ const quality = rating !== null && rating >= 8 ? '4K' : 'HD';
   .pc-fav--on { color: #ff4d6d; border-color: #ff4d6d; }
   .pc-fav--on svg { fill: #ff4d6d; }
 
-  /* Below image */
-  .poster-card-info { padding: 0.5rem 0 0; }
+  /* Below image — sits on the glass frame, aligned to the artwork edges. */
+  .poster-card-info { padding: 0.55rem 0.15rem 0.3rem; }
   .poster-card-title {
     font-size: var(--font-size-sm); font-weight: 500; color: var(--color-text);
     margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3;
@@ -264,19 +288,38 @@ const quality = rating !== null && rating >= 8 ? '4K' : 'HD';
   :global(.poster-grid) .poster-card-info { min-height: 2.6rem; }
 
   /* Touch/mobile: no hover UI — hide the action overlay (play / heart / info)
-     and disable the sticky-hover lift + zoom so cards stay static on tap. */
+     and disable the sticky-hover lift + zoom so cards stay static on tap.
+     With the wrap transparent, the drop shadow has nothing to sit on at this
+     size (rails put cards ~110px wide side by side and the shadows merged into
+     a grey band), so it becomes a hairline edge instead. Badges shrink to match
+     the smaller artwork — at 0.7rem they covered a third of the poster. */
   @media (max-width: 767px) {
-    .poster-card-overlay { display: none !important; }
-    .poster-card:hover .poster-card-img-wrap,
-    .poster-card:focus-within .poster-card-img-wrap {
-      transform: none;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    /* Lighter glass on a phone: a big backdrop-blur behind ~110px cards packed
+       into a rail is expensive and the frame reads heavy, so trim the padding
+       and radius and drop the hover lift/zoom (there is no hover on touch). */
+    .poster-card {
+      padding: 0.3rem 0.3rem 0.05rem;
+      border-radius: var(--radius-lg);
     }
+    .poster-card:hover,
+    .poster-card:focus-within {
+      transform: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10),
+                  0 6px 18px rgba(0, 0, 0, 0.35);
+      border-color: rgba(255, 255, 255, 0.09);
+    }
+    .poster-card-overlay { display: none !important; }
     .poster-card:hover .poster-card-img { transform: none; }
+
+    .poster-card-badges { top: 0.55rem; left: 0.55rem; right: 0.55rem; gap: 0.2rem; }
+    .pc-imdb { font-size: 0.625rem; padding: 0.1rem 0.3rem; gap: 0.2rem; }
+    .pc-imdb-tag { font-size: 0.5rem; }
+    .pc-quality { font-size: 0.5rem; padding: 0.1rem 0.3rem; }
+    .poster-card-info { padding: 0.4rem 0.1rem 0.2rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .poster-card:hover .poster-card-img-wrap { transform: none; }
+    .poster-card:hover { transform: none; }
     .poster-card:hover .poster-card-img { transform: none; }
   }
 </style>

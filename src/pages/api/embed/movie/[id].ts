@@ -3,14 +3,19 @@
 // The iframe points at this same-origin route; we resolve the real provider URL
 // on the server and 302 there, so EMBED_API_KEY never reaches the browser.
 //
-// Behaviour: the requested server always wins. A backend probe still runs to
-// resolve the best URL, but a probe that fails no longer blocks playback — the
-// provider's own player URL is used instead, so every server button works.
+// Behaviour: the requested server always wins. When a server is explicitly
+// requested we 302 straight to that provider's own player URL WITHOUT probing —
+// the probe runs from a datacenter IP that providers throttle (up to
+// PROBE_TIMEOUT_MS), and since a requested server wins whether the probe passes
+// or fails, waiting on it only delayed the very first frame. Skipping it makes
+// playback start as fast as the network allows (sub-second in practice). The
+// probe still runs, as advice, only when NO server was requested and we have to
+// choose one ourselves.
 //
 // Query params:
 //   ?server=nexstream|vidlink|videasy|vidfast  (optional preference)
 import type { APIRoute } from 'astro';
-import { normalizeServer, resolveEmbedUrl } from '../../../../lib/embed';
+import { movieEmbedUrl, normalizeServer, resolveEmbedUrl } from '../../../../lib/embed';
 
 export const prerender = false;
 
@@ -42,6 +47,23 @@ export const GET: APIRoute = async ({ params, url }) => {
   // null when absent/unknown (e.g. a retired provider saved in localStorage) —
   // resolveEmbedUrl then picks the strongest server itself.
   const requested = normalizeServer(url.searchParams.get('server'));
+
+  // FAST PATH: a server the viewer (or auto-pick) already chose wins regardless
+  // of what a probe would say, so do not pay for the probe. Redirect straight to
+  // the provider's player. Its own JS confirms the stream in the browser, which
+  // is stronger evidence than a datacenter probe could ever get.
+  if (requested) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: movieEmbedUrl(id, requested),
+        'X-Embed-Server': requested,
+        'X-Embed-Confirmed': '0',
+        'Cache-Control': 'private, no-store',
+        'Referrer-Policy': 'no-referrer',
+      },
+    });
+  }
 
   let resolved: Awaited<ReturnType<typeof resolveEmbedUrl>>;
   try {

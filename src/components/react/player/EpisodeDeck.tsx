@@ -31,12 +31,17 @@ import type { PlayerT } from '../../../lib/player/strings';
 
 const STILL = 'https://image.tmdb.org/t/p/w300';
 
-/** Cards further out than this from the centre are not rendered at all. */
-const WINDOW = 3;
+/** Cards further out than this from the centre are not rendered at all.
+    Two, not three: at three the card sits entirely outside the stage on every
+    phone width, so it was markup and an opacity animation for nothing. */
+const WINDOW = 2;
 /** …and only these carry an <img>, so a 24-episode season loads ~5 stills. */
 const IMAGE_WINDOW = 2;
 /** Horizontal travel needed before a touch counts as a swipe, not a tap. */
 const SWIPE_PX = 36;
+/** Gap between card centres, as a fraction of one card width. Below 1 the
+    neighbours overlap the centre card, which is what makes it read as a deck. */
+const PEEK = 0.82;
 
 interface DeckCard {
   key: string;
@@ -89,20 +94,73 @@ export default function EpisodeDeck({
     setDeck(rotate(cards, (target < 0 ? 0 : target) - centre));
   }, [episodes, season, currentEpisode]);
 
-  // Card width tracks the viewport so the neighbours always peek in by the same
-  // amount, from a 320px phone up to the 40rem breakpoint where the list takes
-  // over again.
-  const [cardWidth, setCardWidth] = useState(240);
-  useEffect(() => {
-    const update = () => {
-      setCardWidth(Math.max(196, Math.min(276, Math.round(window.innerWidth * 0.62))));
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
+  /* Does any episode in this season carry a synopsis? The deck has ONE height
+     for every card, so the answer decides whether that height needs to reserve
+     three lines of body copy or none — a season with no overviews used to get
+     ~50px of empty card under every title. */
+  const hasOverview = useMemo(
+    () => episodes.some((episode) => !!episode.overview),
+    [episodes]
+  );
 
-  const cardHeight = Math.round(cardWidth * 1.26);
+  /* Card geometry, measured from the DECK'S OWN WIDTH rather than the viewport.
+     The episode block sits inside the page gutter, so on a 390px phone the stage
+     is ~358px — sizing the card off `innerWidth` made it 85% of the stage, which
+     left the neighbours as 20px scraps and put the card's edges exactly where the
+     stage's edge fade starts.
+
+     74% of the stage keeps a consistent ~13% peek on each side at every width.
+     The height is ADDED UP from the parts that are really in the card — padding,
+     a 16:9 still, the label, two lines of title, three lines of synopsis when the
+     season has them — instead of the old `width * 1.14`, which over-shot the
+     content by ~40px and left every card with a dead strip under its text. */
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [geometry, setGeometry] = useState({ width: 260, height: 300 });
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const measure = () => {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const stageWidth = stage.clientWidth || window.innerWidth;
+      const width = Math.max(200, Math.min(320, Math.round(stageWidth * 0.74)));
+
+      const padBlock = 0.85 * rem + 0.9 * rem; // .fp-epcard padding, top + bottom
+      const padInline = 0.8 * rem * 2;
+      const stackGap = 0.6 * rem; // thumb → body
+      const bodyGap = 0.2 * rem * (hasOverview ? 2 : 1);
+      const thumb = ((width - padInline) * 9) / 16;
+      const label = 0.64 * rem * 1.4; // one uppercase line
+      const title = 0.92 * rem * 1.28 * 2; // clamped to two lines
+      const overview = hasOverview ? 0.73 * rem * 1.45 * 3 : 0; // clamped to three
+
+      // Never let a card exceed ~62% of the viewport height: on a short phone in
+      // landscape the deck would otherwise push the season pills out of reach.
+      const height = Math.min(
+        Math.round(padBlock + thumb + stackGap + label + title + overview + bodyGap),
+        Math.round(window.innerHeight * 0.62)
+      );
+
+      // Bail out when nothing changed: the observer also fires for the height
+      // this effect sets, and a fresh object every time would spin.
+      setGeometry((previous) =>
+        previous.width === width && previous.height === height ? previous : { width, height }
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    // The height cap depends on innerHeight, which a resize can change without
+    // changing the stage's width.
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [hasOverview]);
+
+  const { width: cardWidth, height: cardHeight } = geometry;
   const notch = Math.round(cardWidth * 0.15);
 
   const handleMove = useCallback((steps: number) => {
@@ -182,7 +240,8 @@ export default function EpisodeDeck({
     >
       <div
         className="fp-epdeck-stage"
-        style={{ height: cardHeight + 40 }}
+        ref={stageRef}
+        style={{ height: cardHeight + 26 }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
@@ -194,7 +253,6 @@ export default function EpisodeDeck({
           const isCentre = position === 0;
           const episode = card.episode;
           const isPlaying = currentEpisode === episode.episode_number;
-          const odd = position % 2 !== 0;
 
           return (
             <button
@@ -205,14 +263,20 @@ export default function EpisodeDeck({
                 width: cardWidth,
                 height: cardHeight,
                 zIndex: 10 - distance,
-                opacity: isCentre ? 1 : Math.max(0.2, 0.6 - (distance - 1) * 0.2),
+                /* The neighbours are backdrop, not content: dim enough that the
+                   eye goes straight to the centre card, bright enough to read as
+                   "there is more this way". */
+                opacity: isCentre ? 1 : distance === 1 ? 0.5 : 0.22,
                 clipPath: `polygon(${notch}px 0%, 100% 0%, 100% 100%, 0 100%, 0 ${notch}px)`,
                 transform: [
                   'translate(-50%, -50%)',
-                  `translateX(${(cardWidth / 1.5) * position}px)`,
-                  `translateY(${isCentre ? -14 : odd ? 16 : -16}px)`,
-                  `rotate(${isCentre ? 0 : odd ? 2.4 : -2.4}deg)`,
-                  `scale(${isCentre ? 1 : 0.93})`,
+                  `translateX(${cardWidth * PEEK * position}px)`,
+                  /* Only the centre card lifts. The old alternating ±16px scatter
+                     put one neighbour above the centre and the next below it,
+                     which read as misalignment rather than as a stack. */
+                  `translateY(${isCentre ? -10 : 0}px)`,
+                  `rotate(${isCentre ? 0 : position < 0 ? -2.2 : 2.2}deg)`,
+                  `scale(${isCentre ? 1 : distance === 1 ? 0.94 : 0.88})`,
                 ].join(' '),
               }}
               onClick={() => {
@@ -260,7 +324,10 @@ export default function EpisodeDeck({
                   {episode.runtime ? ` · ${episode.runtime}m` : ''}
                 </span>
                 <span className="fp-epcard-name">{episode.name}</span>
-                {isCentre && episode.overview && (
+                {/* On the neighbours too, not just the centre: every card is the
+                    same height, so a card without its synopsis is a card with an
+                    empty strip at the bottom. They are dimmed anyway. */}
+                {episode.overview && (
                   <span className="fp-epcard-overview">{episode.overview}</span>
                 )}
               </span>
