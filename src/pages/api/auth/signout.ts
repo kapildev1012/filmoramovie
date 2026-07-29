@@ -1,9 +1,10 @@
 // src/pages/api/auth/signout.ts — Sign out (deletes session)
 import type { APIRoute } from 'astro';
 import { getSessionFromRequest, deleteSession, SESSION_COOKIE } from '../../../lib/db';
+import { getDB } from '../../../lib/db-driver';
 
 export const POST: APIRoute = async ({ request, locals }) => {
-  const db = locals.runtime.env.DB;
+  const db = await getDB(locals);
   const session = await getSessionFromRequest(db, request);
   if (session) {
     await deleteSession(db, session.id);

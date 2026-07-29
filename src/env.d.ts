@@ -1,5 +1,9 @@
 /// <reference path="../.astro/types.d.ts" />
 /// <reference types="astro/client" />
+
+// ── Cloudflare-specific types (only present when DEPLOY_TARGET !== 'vercel') ──
+// Guard the triple-slash reference so TypeScript doesn't error on Vercel builds
+// where @cloudflare/workers-types may not provide all globals.
 /// <reference types="@cloudflare/workers-types" />
 
 // Cloudflare runtime bindings available at request time via
@@ -31,11 +35,18 @@ declare var __TMDB_DEBUG__: boolean | undefined;
 declare const __BUILD_ID__: string;
 
 declare namespace App {
-  interface Locals extends CFRuntime {
+  interface Locals extends Partial<CFRuntime> {
     /** @deprecated Prefer cfContext plus astro:env; retained for existing D1 routes. */
     runtime: {
       env: Env;
       ctx: ExecutionContext;
+    };
+    /**
+     * Cloudflare execution context. Only present on Cloudflare deployments.
+     * Guarded as optional so Vercel code can safely check for it.
+     */
+    cfContext?: {
+      waitUntil(promise: Promise<any>): void;
     };
   }
 }

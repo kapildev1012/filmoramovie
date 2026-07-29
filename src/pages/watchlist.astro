@@ -3,9 +3,10 @@
 import Layout from '../layouts/Layout.astro';
 import { getSessionFromRequest, getProfilesByUserId, getWatchlist } from '../lib/db';
 import type { DBWatchlistEntry } from '../lib/db';
+import { getDB } from '../lib/db-driver';
 
 // Auth gate
-const db = Astro.locals.runtime.env.DB;
+const db = await getDB(Astro.locals);
 const session = await getSessionFromRequest(db, Astro.request);
 if (!session) {
   return Astro.redirect('/login?return=/watchlist');

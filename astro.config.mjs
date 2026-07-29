@@ -1,10 +1,19 @@
 // @ts-check
 import { defineConfig, envField } from 'astro/config';
 import react from '@astrojs/react';
-import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
 
 // https://astro.build/config
+
+// ── Platform target ──────────────────────────────────────────────────────────
+// Set DEPLOY_TARGET=vercel to build for Vercel. Default is Cloudflare.
+const target = process.env.DEPLOY_TARGET ?? 'cloudflare';
+const isVercel = target === 'vercel';
+
+// Dynamic adapter import: Cloudflare or Vercel.
+const adapter = isVercel
+  ? (await import('@astrojs/vercel')).default()
+  : (await import('@astrojs/cloudflare')).default();
 
 // Set NO_HMR=1 (see the `dev:nohmr` npm script) to run the dev server with
 // hot-reload completely disabled. Nothing will auto-refresh the page — handy
@@ -15,10 +24,7 @@ const noHmr = process.env.NO_HMR === '1';
 export default defineConfig({
   site: 'https://filmoramovie.duckdns.org',
   output: 'server',
-  // Cloudflare Workers adapter (v14, Astro 7 compatible). `platformProxy`
-  // exposes bindings (e.g. the D1 `DB` binding) on `Astro.locals.runtime.env`
-  // during `astro dev`.
-  adapter: cloudflare(),
+  adapter,
   // Runtime secrets. On Cloudflare, import.meta.env does NOT contain secrets —
   // astro:env reads them from the Worker runtime env (wrangler secrets / .dev.vars)
   // and from .env locally. Read via `import { NAME } from 'astro:env/server'`.
@@ -30,6 +36,11 @@ export default defineConfig({
       GOOGLE_CLIENT_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
       GOOGLE_REDIRECT_URI: envField.string({ context: 'server', access: 'secret', optional: true }),
       EMBED_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Turso (Vercel only) — libSQL connection details.
+      TURSO_DATABASE_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
+      TURSO_AUTH_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Platform target, exposed to server code for runtime branching.
+      DEPLOY_TARGET: envField.string({ context: 'server', access: 'public', optional: true, default: 'cloudflare' }),
     },
   },
   // Prefetch just before intent. Viewport prefetch caused content rails to
@@ -43,6 +54,12 @@ export default defineConfig({
   ],
   vite: {
     plugins: [tailwindcss()],
+    // Minify the build output. Astro ships the SSR (server) bundle unminified
+    // by default, which included readable library code (e.g. Zod internals)
+    // that tripped a Cloudflare WAF false-positive on `wrangler deploy`
+    // (POST .../workers/scripts/<name>/versions -> 403 "you have been blocked").
+    // Minifying rewrites those token/whitespace patterns and shrinks the upload.
+    build: { minify: true },
     // Build fingerprint, injected into src/middleware.ts as part of the HTML
     // cache key. `caches.default` on Cloudflare survives deploys, so without
     // this a page cached before a change kept being served (stale-while-
@@ -52,8 +69,11 @@ export default defineConfig({
       __BUILD_ID__: JSON.stringify(
         process.env.CF_PAGES_COMMIT_SHA ??
           process.env.WORKERS_CI_COMMIT_SHA ??
+          process.env.VERCEL_GIT_COMMIT_SHA ??
           Date.now().toString(36)
       ),
+      // Expose the deploy target to server code for conditional imports.
+      'import.meta.env.DEPLOY_TARGET': JSON.stringify(target),
     },
     server: {
       // `NO_HMR=1 npm run dev` -> no websocket, no HMR client, no auto reload.

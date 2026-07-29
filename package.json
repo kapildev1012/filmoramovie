@@ -9,6 +9,7 @@
     "dev": "astro dev",
     "dev:nohmr": "NO_HMR=1 astro dev",
     "build": "astro build",
+    "build:vercel": "DEPLOY_TARGET=vercel astro build",
     "preview": "astro preview",
     "astro": "astro"
   },

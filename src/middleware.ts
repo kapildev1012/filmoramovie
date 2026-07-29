@@ -25,6 +25,11 @@ function cacheKeyFor(url: URL, request: Request): Request {
   return new Request(key.toString(), { method: 'GET', headers: request.headers });
 }
 
+/** Check if we're running on Cloudflare (has edge cache + cfContext). */
+function isCloudflare(): boolean {
+  return typeof caches !== 'undefined' && import.meta.env.DEPLOY_TARGET !== 'vercel';
+}
+
 export const onRequest = defineMiddleware(async ({ request, url, locals }, next) => {
   const isGet = request.method === 'GET' || request.method === 'HEAD';
   const isAuthenticated = (request.headers.get('cookie') ?? '').includes('filmora_session=');
@@ -40,10 +45,14 @@ export const onRequest = defineMiddleware(async ({ request, url, locals }, next)
     return next();
   }
 
+  // Edge caching is Cloudflare-only. On Vercel the CDN handles caching via
+  // Cache-Control headers, so we skip the manual cache read/write entirely.
+  const useEdgeCache = isCloudflare();
+
   type EdgeCacheStorage = CacheStorage & { default: Cache };
-  const edgeCache = typeof caches === 'undefined'
-    ? null
-    : (caches as EdgeCacheStorage).default;
+  const edgeCache = useEdgeCache
+    ? (caches as EdgeCacheStorage).default
+    : null;
 
   const cacheKey = cacheKeyFor(url, request);
 
@@ -65,7 +74,7 @@ export const onRequest = defineMiddleware(async ({ request, url, locals }, next)
     headers,
   });
 
-  if (edgeCache && request.method === 'GET') {
+  if (edgeCache && request.method === 'GET' && locals.cfContext) {
     const cacheWrite = edgeCache.put(cacheKey, response.clone());
     locals.cfContext.waitUntil(cacheWrite);
   }

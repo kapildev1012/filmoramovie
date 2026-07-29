@@ -3,10 +3,11 @@
 import Layout from '../layouts/Layout.astro';
 import AuthShowcase from '../components/react/AuthShowcase';
 import { getSessionFromRequest } from '../lib/db';
+import { getDB } from '../lib/db-driver';
 import { getTrendingMovies } from '../lib/tmdb';
 
 // Redirect if already logged in
-const db = Astro.locals.runtime.env.DB;
+const db = await getDB(Astro.locals);
 const session = await getSessionFromRequest(db, Astro.request);
 if (session) {
   return Astro.redirect('/profile');

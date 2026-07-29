@@ -6,9 +6,10 @@ import {
   addToWatchlist,
   removeFromWatchlist,
 } from '../../../lib/db';
+import { getDB } from '../../../lib/db-driver';
 
 export const POST: APIRoute = async ({ request, locals }) => {
-  const db = locals.runtime.env.DB;
+  const db = await getDB(locals);
   const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -66,7 +67,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 };
 
 export const DELETE: APIRoute = async ({ request, locals }) => {
-  const db = locals.runtime.env.DB;
+  const db = await getDB(locals);
   const session = await getSessionFromRequest(db, request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {

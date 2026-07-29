@@ -2,9 +2,10 @@
 import type { APIRoute } from 'astro';
 import { getGoogleOAuth } from '../../../../lib/oauth';
 import { upsertUser, createSession, getProfilesByUserId, createProfile, SESSION_COOKIE } from '../../../../lib/db';
+import { getDB } from '../../../../lib/db-driver';
 
 export const GET: APIRoute = async ({ url, request, locals }) => {
-  const db = locals.runtime.env.DB;
+  const db = await getDB(locals);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
 
