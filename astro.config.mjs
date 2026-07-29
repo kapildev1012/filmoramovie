@@ -77,29 +77,44 @@ export default defineConfig({
     // Pre-bundle heavy client-island dependencies up front so Vite does not
     // discover them lazily mid-session and trigger a dependency re-optimization,
     // which forces a full-page reload (the "auto-refreshing" behaviour in dev).
-    optimizeDeps: {
-      include: [
-        // ClientRouter (src/layouts/Layout.astro) and `navigate()` in
-        // SearchBar.tsx pull these in only once a page actually renders, so
-        // Vite discovered them mid-session and re-optimized -> full page
-        // reload. Pre-bundling them at startup keeps the dev server stable.
-        'astro/virtual-modules/transitions-router.js',
-        'astro/virtual-modules/transitions-events.js',
-        'astro/virtual-modules/transitions-swap-functions.js',
-        'astro/virtual-modules/transitions-types.js',
-        'react',
-        'react-dom',
-        'three',
-        '@react-three/fiber',
-        '@react-three/drei',
-        'motion',
-        'motion/react',
-        'framer-motion',
-        'gsap',
-        'lucide-react',
-        'class-variance-authority',
-        'tailwind-merge',
-      ],
+    //
+    // SCOPED TO THE CLIENT ENVIRONMENT ON PURPOSE. A top-level `optimizeDeps`
+    // applies to every Vite environment, including the Cloudflare/workerd SSR
+    // one. The SSR optimizer declines to emit some of these (gsap, which is
+    // already valid ESM) while the include entry still rewrites SSR imports to
+    // `.vite/deps_ssr/<dep>.js?v=…` — a file that is never written. The result
+    // was a 500 on every page that server-renders such an island:
+    //   "The file does not exist at .../deps_ssr/gsap.js?v=… which is in the
+    //    optimize deps directory."
+    // These are all browser-island dependencies, so the client environment is
+    // the only place they belong.
+    environments: {
+      client: {
+        optimizeDeps: {
+          include: [
+            // ClientRouter (src/layouts/Layout.astro) and `navigate()` in
+            // SearchBar.tsx pull these in only once a page actually renders, so
+            // Vite discovered them mid-session and re-optimized -> full page
+            // reload. Pre-bundling them at startup keeps the dev server stable.
+            'astro/virtual-modules/transitions-router.js',
+            'astro/virtual-modules/transitions-events.js',
+            'astro/virtual-modules/transitions-swap-functions.js',
+            'astro/virtual-modules/transitions-types.js',
+            'react',
+            'react-dom',
+            'three',
+            '@react-three/fiber',
+            '@react-three/drei',
+            'motion',
+            'motion/react',
+            'framer-motion',
+            'gsap',
+            'lucide-react',
+            'class-variance-authority',
+            'tailwind-merge',
+          ],
+        },
+      },
     },
   },
 });

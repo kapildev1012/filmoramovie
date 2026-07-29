@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { HeroSlide } from '../../lib/tmdb';
-import { AnimatedLayerButton } from '../ui/AnimatedLayerButton';
+import { InteractiveHoverButton } from '../ui/interactive-hover-button';
 
 const SLIDE_MS = 3000; // 3 seconds per slide
 const MAX_GENRES = 3;  // keep the chip row on a single line
@@ -198,17 +198,13 @@ export default function HeroCarousel({ slides, label }: Props) {
               the only navigation CTA: the old desktop “More Info” button led to
               the same place and read like a duplicate trailer action. */}
           <div className="nf-actions">
-            <AnimatedLayerButton
+            <InteractiveHoverButton
               type="button"
+              text="Watch Now"
               onClick={() => { window.location.href = slide.href; }}
-              className="nf-play-animated"
+              className="nf-ihb"
               aria-label={`Watch ${slide.title} now`}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M6 4.75a.75.75 0 0 1 1.18-.61l12 7.25a.75.75 0 0 1 0 1.22l-12 7.25A.75.75 0 0 1 6 19.25V4.75z"/>
-              </svg>
-              <span>Watch Now</span>
-            </AnimatedLayerButton>
+            />
             <WatchlistBtn id={slide.id} mediaType={slide.mediaType} title={slide.title} posterUrl={slide.posterUrl} />
           </div>
         </div>
@@ -501,13 +497,16 @@ export default function HeroCarousel({ slides, label }: Props) {
           animation: nf-fade-up 0.5s ease backwards;
           animation-delay: 200ms;
         }
-        .nf-play-animated {
-          width: min(280px, calc(100% - 58px));
+        /* Override the component's shadcn default width/padding utilities with
+           the hero's own sizing. The two-class selector is more specific than
+           Tailwind's single utility classes regardless of stylesheet order;
+           cn does not merge or dedupe conflicting utilities in this project. */
+        .nf-actions .nf-ihb {
+          width: min(240px, calc(100% - 58px));
           height: 55px;
-          flex: 0 1 280px;
-          gap: 0.625rem;
+          flex: 0 1 240px;
+          font-size: 1.0625rem;
           color: #fff;
-          box-shadow: 8px 8px 0 rgba(255,255,255,0.92);
         }
         .nf-btn {
           display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
@@ -543,14 +542,12 @@ export default function HeroCarousel({ slides, label }: Props) {
             margin: 0.35rem auto 0;
             gap: 0.75rem;
           }
-          .nf-play-animated {
+          .nf-actions .nf-ihb {
             width: auto;
             min-width: 0;
             height: 52px;
             flex: 1 1 auto;
-            border-radius: 26px;
             font-size: 0.9375rem;
-            box-shadow: 6px 6px 0 rgba(255,255,255,0.92);
           }
           .nf-btn--wl {
             width: 52px; height: 52px;
@@ -560,6 +557,7 @@ export default function HeroCarousel({ slides, label }: Props) {
         @media (max-width: 380px) {
           .nf-actions { gap: 0.625rem; }
           .nf-play-animated { height: 50px; font-size: 0.875rem; }
+          .nf-actions .nf-ihb { height: 50px; font-size: 0.875rem; }
           .nf-btn--wl { width: 50px; height: 50px; flex-basis: 50px; }
         }
 

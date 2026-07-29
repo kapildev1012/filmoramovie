@@ -6,12 +6,17 @@
 //                       closable with Escape or the close button.
 //   variant="inline"  — the same list below the player for browsing without
 //                       covering the video, which is what a discovery page wants.
+//                       On phones this variant swaps the list for a stagger deck
+//                       (EpisodeDeck) — one card in focus, its neighbours angled
+//                       behind it — because a 24-row list buries the rest of the
+//                       page on a 390px screen.
 //
 // The current episode is marked with `aria-current` and scrolled into view when
 // the list opens, so a viewer 14 episodes deep does not land at the top.
 
 import { useEffect, useRef } from 'react';
 import { CloseIcon, PlayIcon } from './Icons';
+import EpisodeDeck from './EpisodeDeck';
 import type { PlayerT } from '../../../lib/player/strings';
 
 export interface SeasonOption {
@@ -75,23 +80,38 @@ export default function EpisodeOverlay({
         <h3 className="fp-menu-title">{t('episodes')}</h3>
         {seasons.length > 1 && (
           <div className="fp-season-tabs" role="tablist" aria-label={t('season')}>
-            {seasons.map((season) => (
-              <button
-                key={season.season_number}
-                type="button"
-                role="tab"
-                aria-selected={activeSeason === season.season_number}
-                className={`fp-season-tab${activeSeason === season.season_number ? ' is-active' : ''}`}
-                onClick={() => onSeason(season.season_number)}
-              >
-                {/* Season 0 is TMDB's "Specials" bucket, and for some titles it
-                    is the only season that exists. "Season 0" would be wrong and
-                    confusing, so those tabs use the season's own name. */}
-                {season.season_number === 0
+            {seasons.map((season) => {
+              /* Season 0 is TMDB's "Specials" bucket, and for some titles it is
+                 the only season that exists. "Season 0" would be wrong and
+                 confusing, so those tabs use the season's own name. */
+              const label =
+                season.season_number === 0
                   ? season.name || t('season')
-                  : `${t('season')} ${season.season_number}`}
-              </button>
-            ))}
+                  : `${t('season')} ${season.season_number}`;
+              return (
+                <button
+                  key={season.season_number}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeSeason === season.season_number}
+                  className={`fp-season-tab${activeSeason === season.season_number ? ' is-active' : ''}`}
+                  onClick={() => onSeason(season.season_number)}
+                >
+                  <span className="fp-season-tab-name">{label}</span>
+                  {/* Episode count as a dimmed second half of the pill. Only
+                      when it is real: TMDB reports 0 for plenty of currently
+                      airing seasons, and "· 0" reads as broken. */}
+                  {season.episode_count > 0 && (
+                    <>
+                      <span className="fp-season-tab-sep" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="fp-season-tab-count">{season.episode_count}</span>
+                    </>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
         {variant === 'overlay' && onClose && (
@@ -122,44 +142,64 @@ export default function EpisodeOverlay({
       ) : episodes.length === 0 ? (
         <p className="fp-episodes-empty">{t('noEpisodes')}</p>
       ) : (
-        <ul className="fp-episode-list" ref={listRef}>
-          {episodes.map((episode) => {
-            const isCurrent =
-              current?.season === activeSeason && current?.episode === episode.episode_number;
-            return (
-              <li key={episode.episode_number}>
-                <button
-                  type="button"
-                  className={`fp-episode${isCurrent ? ' is-current' : ''}`}
-                  onClick={() => onPlay(activeSeason, episode.episode_number)}
-                  aria-current={isCurrent ? 'true' : undefined}
-                  data-current={isCurrent ? 'true' : undefined}
-                >
-                  <span className="fp-episode-thumb">
-                    {episode.still_path ? (
-                      <img src={`${STILL}${episode.still_path}`} alt="" loading="lazy" />
-                    ) : (
-                      <span className="fp-episode-thumb-fallback" aria-hidden="true" />
-                    )}
-                    <span className="fp-episode-play" aria-hidden="true">
-                      <PlayIcon size={18} />
+        <>
+          {/* Phones (inline variant only): the same episodes as a stagger deck.
+              Both presentations are in the DOM and swapped by a media query in
+              player.css rather than by a JS width check — a `matchMedia` in state
+              would render the wrong one for the first frame after hydration.
+              The deck only renders cards near its centre, so the extra markup is
+              a handful of nodes, not a second full list. */}
+          {variant === 'inline' && (
+            <EpisodeDeck
+              season={activeSeason}
+              episodes={episodes}
+              current={current}
+              onPlay={onPlay}
+              t={t}
+            />
+          )}
+          <ul
+            className={`fp-episode-list${variant === 'inline' ? ' fp-episode-list-wide' : ''}`}
+            ref={listRef}
+          >
+            {episodes.map((episode) => {
+              const isCurrent =
+                current?.season === activeSeason && current?.episode === episode.episode_number;
+              return (
+                <li key={episode.episode_number}>
+                  <button
+                    type="button"
+                    className={`fp-episode${isCurrent ? ' is-current' : ''}`}
+                    onClick={() => onPlay(activeSeason, episode.episode_number)}
+                    aria-current={isCurrent ? 'true' : undefined}
+                    data-current={isCurrent ? 'true' : undefined}
+                  >
+                    <span className="fp-episode-thumb">
+                      {episode.still_path ? (
+                        <img src={`${STILL}${episode.still_path}`} alt="" loading="lazy" />
+                      ) : (
+                        <span className="fp-episode-thumb-fallback" aria-hidden="true" />
+                      )}
+                      <span className="fp-episode-play" aria-hidden="true">
+                        <PlayIcon size={18} />
+                      </span>
                     </span>
-                  </span>
-                  <span className="fp-episode-meta">
-                    <span className="fp-episode-num">
-                      {t('episode')} {episode.episode_number}
-                      {episode.runtime ? ` · ${episode.runtime}m` : ''}
+                    <span className="fp-episode-meta">
+                      <span className="fp-episode-num">
+                        {t('episode')} {episode.episode_number}
+                        {episode.runtime ? ` · ${episode.runtime}m` : ''}
+                      </span>
+                      <span className="fp-episode-name">{episode.name}</span>
+                      {variant === 'inline' && episode.overview && (
+                        <span className="fp-episode-overview">{episode.overview}</span>
+                      )}
                     </span>
-                    <span className="fp-episode-name">{episode.name}</span>
-                    {variant === 'inline' && episode.overview && (
-                      <span className="fp-episode-overview">{episode.overview}</span>
-                    )}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );

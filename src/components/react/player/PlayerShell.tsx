@@ -1046,7 +1046,7 @@ export default function PlayerShell({
                 canSelectAudio={caps.audioTracks}
                 canSelectText={caps.textTracks}
                 canStyleSubtitles={caps.subtitleStyling}
-                managedExternally={engine === 'embed'}
+                managedExternally={false}
                 subtitleSize={prefs.subtitleSize}
                 subtitleBackdrop={prefs.subtitleBackdrop}
                 onSelectAudio={selectAudio}

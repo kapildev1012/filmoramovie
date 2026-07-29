@@ -149,7 +149,7 @@ export default function SourceBar({
       onPointerDown={(event) => event.stopPropagation()}
     >
       {showEngines && (
-        <div className="fp-source-group" role="group" aria-label={t('fullTitle')}>
+        <div className="fp-source-group fp-source-group-engines" role="group" aria-label={t('fullTitle')}>
           {visibleEngines.map((id) => (
             <button
               key={id}
@@ -165,7 +165,7 @@ export default function SourceBar({
       )}
 
       {showServers && (
-        <div className="fp-source-group" role="group" aria-label={t('servers')}>
+        <div className="fp-source-group fp-source-group-servers" role="group" aria-label={t('servers')}>
           <span className="fp-source-label">
             {t('servers')}
             {checking && <span className="fp-source-checking" aria-hidden="true" />}

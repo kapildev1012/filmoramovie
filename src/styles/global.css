@@ -65,6 +65,7 @@ html[data-theme="light"] {
   --color-background:       var(--color-bg);
   --color-foreground:       var(--color-text);
   --color-primary:          var(--color-accent-from);
+  --color-primary-foreground: #ffffff;
   --color-secondary:        var(--color-accent-to);
   --color-muted-foreground: var(--color-text-2);
   --color-muted:            var(--color-surface-2);
