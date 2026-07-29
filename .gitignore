@@ -42,3 +42,6 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# nested legacy app copy (separate git repo, not part of this project)
+absent-axis/
