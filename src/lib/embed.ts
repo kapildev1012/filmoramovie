@@ -48,7 +48,7 @@ export const IMG_BASE_LG = 'https://image.tmdb.org/t/p/w780';
 const ACCENT = 'e50914';
 
 /** Identifier for a streaming server/source. */
-export type EmbedServerId = 'nexstream' | 'vidlink' | 'videasy' | 'vidfast';
+export type EmbedServerId = 'vidsrcin' | 'nexstream' | 'vidlink' | 'videasy' | 'vidfast';
 
 /** How trustworthy a provider's availability probe can be. */
 export type ProbeConfidence = 'title' | 'live';
@@ -69,10 +69,11 @@ export const EMBED_SERVER_META: ReadonlyArray<{
   label: string;
   confidence: ProbeConfidence;
 }> = [
-  { id: 'nexstream', name: 'NexStream', label: 'Server 1', confidence: 'title' },
+  { id: 'vidsrcin', name: 'VidSrc IN (Hindi)', label: 'Server 1', confidence: 'title' },
   { id: 'vidlink', name: 'VidLink', label: 'Server 2', confidence: 'title' },
-  { id: 'videasy', name: 'Videasy', label: 'Server 3', confidence: 'live' },
-  { id: 'vidfast', name: 'VidFast', label: 'Server 4', confidence: 'live' },
+  { id: 'vidfast', name: 'VidFast', label: 'Server 3', confidence: 'live' },
+  { id: 'videasy', name: 'Videasy', label: 'Server 4', confidence: 'live' },
+  { id: 'nexstream', name: 'NexStream', label: 'Server 5', confidence: 'title' },
 ];
 
 const VALID_SERVERS = new Set<string>(EMBED_SERVER_META.map((s) => s.id));
@@ -112,6 +113,10 @@ function providerUrl(server: EmbedServerId, target: EmbedTarget): string {
   const e = isMovie ? '' : String((target as Extract<EmbedTarget, { kind: 'tv' }>).episode);
 
   switch (server) {
+    case 'vidsrcin':
+      return isMovie
+        ? `https://vidsrc.in/embed/movie/${id}`
+        : `https://vidsrc.in/embed/tv/${id}/${s}/${e}`;
     case 'vidlink':
       return isMovie
         ? `https://vidlink.pro/movie/${id}?primaryColor=${ACCENT}&autoplay=true&title=false`

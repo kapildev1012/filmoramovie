@@ -2272,3 +2272,48 @@
     border: 1px solid rgb(255 255 255 / 0.5);
   }
 }
+
+/* ── Embed fullscreen/minimize control ────────────────────────────────────
+   Third-party players own every playback control. Filmora adds only one small
+   centered screen-mode button; the wrapper never receives pointer events, so
+   every pixel except the button itself remains clickable in the iframe. */
+.fp-embed-screen-control {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms var(--fp-ease);
+}
+.fp-stage.is-engine-embed:hover .fp-embed-screen-control,
+.fp-stage.is-engine-embed:focus-within .fp-embed-screen-control,
+.fp-stage.is-engine-embed.is-controls-visible .fp-embed-screen-control {
+  opacity: 1;
+}
+.fp-embed-screen-btn {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.34);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.46);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.38);
+  cursor: pointer;
+  transition: transform 160ms var(--fp-ease), background 160ms var(--fp-ease);
+}
+.fp-embed-screen-btn:hover { transform: scale(1.08); background: rgb(0 0 0 / 0.68); }
+.fp-embed-screen-btn:active { transform: scale(0.95); }
+.fp-embed-screen-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.fp-stage.is-controls-hidden:not(:hover):not(:focus-within) .fp-embed-screen-btn { pointer-events: none; }
+@media (hover: none), (pointer: coarse) {
+  .fp-stage.is-engine-embed .fp-embed-screen-control { opacity: 0.72; }
+  .fp-embed-screen-btn { width: 3.5rem; height: 3.5rem; }
+}

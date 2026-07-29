@@ -39,7 +39,9 @@ const top10 = items.slice(0, 10);
 
     <div class="t10-viewport" data-t10-rail>
       <div class="t10-track" role="list" aria-label={`${title} list`} data-t10-track>
-        {top10.map((item, i) => {
+        {top10.concat(top10).map((item, i) => {
+          const isClone = i >= top10.length;
+          const rank = (i % top10.length) + 1;
           const resolvedType = (item.media_type as 'movie' | 'tv') ?? mediaType;
           const href = `/${resolvedType === 'movie' ? 'movie' : 'series'}/${item.id}`;
           const resolvedTitle = item.title ?? item.name ?? '';
@@ -48,12 +50,12 @@ const top10 = items.slice(0, 10);
             : null;
           const rating = item.vote_average ? item.vote_average.toFixed(1) : null;
           return (
-            <div class="t10-item" role="listitem">
+            <div class="t10-item" role={isClone ? 'presentation' : 'listitem'} aria-hidden={isClone ? 'true' : undefined}>
               {/* ── Number sits at z-index 0, BEHIND the card ── */}
-              <span class="t10-rank" aria-hidden="true">{i + 1}</span>
+              <span class="t10-rank" aria-hidden="true">{rank}</span>
 
               {/* ── Poster at z-index 1, overlaps the right half of the number ── */}
-              <a href={href} class="t10-card" aria-label={resolvedTitle} tabindex={0}>
+              <a href={href} class="t10-card" aria-label={resolvedTitle} tabindex={isClone ? -1 : 0}>
                 {poster ? (
                   <img
                     src={poster}
@@ -86,133 +88,6 @@ const top10 = items.slice(0, 10);
     </div>
   </div>
 </section>
-
-<script>
-  type T10El = HTMLElement & { _t10Init?: boolean };
-
-  function initT10(viewport: T10El) {
-    if (viewport._t10Init) return;
-    viewport._t10Init = true;
-
-    const track = viewport.querySelector<HTMLElement>('[data-t10-track]')!;
-    if (!track) return;
-
-    const originalItems = Array.from(track.children) as HTMLElement[];
-    const total = originalItems.length;
-    if (total < 2) return;
-
-    const VISIBLE   = 5;
-    const STEP_DUR  = 2000;   // each poster stays for 2 seconds
-    const SLIDE_DUR = 500;    // slide animation duration ms
-
-    let queue   = [...originalItems];  // circular queue
-    let animating = false;
-    let paused    = false;
-    let timer: ReturnType<typeof setTimeout>;
-
-    // Initial render: fill track with first VISIBLE items
-    track.innerHTML = '';
-    track.style.cssText += 'position:relative; overflow:hidden;';
-    queue.slice(0, VISIBLE).forEach(el => track.appendChild(el));
-
-    function getSlotWidth() {
-      const first = track.firstElementChild as HTMLElement | null;
-      return first ? first.offsetWidth : 0;
-    }
-
-    function nextSlide() {
-      if (animating) return;
-      animating = true;
-
-      const sw = getSlotWidth();
-      if (sw === 0) { animating = false; return; }
-
-      // The next item to slide in is queue[VISIBLE] (wraps via modulo)
-      const incomingEl = queue[VISIBLE % queue.length].cloneNode(true) as HTMLElement;
-      incomingEl.style.cssText = `
-        position:absolute;
-        left:${VISIBLE * sw}px;
-        top:0; bottom:0;
-        width:${sw}px;
-        pointer-events:none;
-      `;
-      track.appendChild(incomingEl);
-
-      // Slide entire track left by one slot
-      track.style.transition = 'none';
-      track.style.transform  = 'translateX(0px)';
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          track.style.transition = `transform ${SLIDE_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
-          track.style.transform  = `translateX(-${sw}px)`;
-
-          setTimeout(() => {
-            // Remove clone
-            track.removeChild(incomingEl);
-
-            // Reset transform instantly
-            track.style.transition = 'none';
-            track.style.transform  = 'translateX(0px)';
-
-            // Rotate queue: move first item to end, append real next item
-            const outgoing = queue.shift()!;
-            const incoming = queue[VISIBLE - 1]; // now the 5th visible
-            track.removeChild(track.firstElementChild!);
-            track.appendChild(queue[VISIBLE - 1]);
-            queue.push(outgoing); // keep it cycling at the back
-
-            animating = false;
-          }, SLIDE_DUR + 20);
-        });
-      });
-    }
-
-    function schedule() {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        nextSlide();
-        schedule();
-      }, STEP_DUR);
-    }
-
-    schedule();
-
-    // Pause on hover/touch — resume seamlessly
-    track.addEventListener('mouseenter', () => {
-      paused = true;
-      clearTimeout(timer);
-    });
-    track.addEventListener('mouseleave', () => {
-      paused = false;
-      schedule();
-    });
-    track.addEventListener('touchstart', () => {
-      paused = true;
-      clearTimeout(timer);
-    }, { passive: true });
-    track.addEventListener('touchend', () => {
-      paused = false;
-      schedule();
-    });
-
-    document.addEventListener('astro:before-swap', () => clearTimeout(timer), { once: true });
-  }
-
-  function initAll() {
-    // On mobile (≤767px) we use native horizontal scroll — skip the JS carousel
-    if (window.innerWidth <= 767) return;
-    document.querySelectorAll<T10El>('[data-t10-rail]').forEach(initT10);
-  }
-  initAll();
-  document.addEventListener('astro:page-load', initAll);
-  // Re-check on resize in case user rotates device
-  window.addEventListener('resize', () => {
-    document.querySelectorAll<T10El>('[data-t10-rail]').forEach((el) => {
-      if (window.innerWidth > 767) initT10(el);
-    });
-  }, { passive: true });
-</script>
 
 <style>
   .t10-rail { margin-bottom: 1rem; }
@@ -248,23 +123,37 @@ const top10 = items.slice(0, 10);
   /* ── Viewport ── */
   .t10-viewport { position: relative; overflow: hidden; }
 
-  /* ── Track — shows exactly 5 items, clips overflow for smooth slide ── */
+  /* ── Track — continuous right→left marquee ── */
   .t10-track {
     display: flex;
     gap: 0;
-    overflow: hidden;
+    width: max-content;
     padding-bottom: 0.75rem;
     padding-top: 1rem;
     padding-left: 0.25rem;
+    animation: t10-roll 45s linear infinite;
+    will-change: transform;
+  }
+  .t10-viewport:hover .t10-track { animation-play-state: paused; }
+  @keyframes t10-roll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .t10-track { animation: none; transform: none; }
   }
 
-  /* ── Each item — exactly 1/5 of container width on desktop ── */
+  /* ── Each item — fixed width so the marquee track can overflow ──
+     --t10-rank-w  : width of the rank number column
+     --t10-overlap : how much of that number the card covers (10% → 90% visible) */
   .t10-item {
+    --t10-rank-w: 90px;
+    --t10-hidden: 0.1;
     position: relative;
     display: flex;
     align-items: flex-end;
-    flex: 0 0 calc(100% / 5);
-    min-width: calc(100% / 5);
+    flex: 0 0 auto;
+    width: clamp(180px, 20vw, 240px);
     transition: opacity 0.3s ease;
   }
 
@@ -285,6 +174,9 @@ const top10 = items.slice(0, 10);
 
     .t10-track {
       overflow: visible !important;
+      width: auto !important;
+      animation: none !important;
+      transform: none !important;
       padding-left: 0;
       padding-right: 0;
       padding-top: 1.25rem;
@@ -328,8 +220,8 @@ const top10 = items.slice(0, 10);
     position: relative;
     z-index: 0;
     flex-shrink: 0;
-    /* Wide enough so 75% of the number is visible beside the card */
-    width: 90px;
+    /* Only --t10-hidden (10%) of this width ends up under the card */
+    width: var(--t10-rank-w);
     font-size: clamp(5.5rem, 9vw, 8.5rem);
     font-weight: 900;
     line-height: 1;
@@ -344,17 +236,17 @@ const top10 = items.slice(0, 10);
     align-self: flex-end;
     margin-bottom: 0.15rem;
   }
-  @media (min-width: 768px)  { .t10-rank { width: 100px; font-size: clamp(6rem, 8vw, 8.5rem); } }
-  @media (min-width: 1280px) { .t10-rank { width: 110px; font-size: 9rem; } }
+  @media (min-width: 768px)  { .t10-item { --t10-rank-w: 100px; } .t10-rank { font-size: clamp(6rem, 8vw, 8.5rem); } }
+  @media (min-width: 1280px) { .t10-item { --t10-rank-w: 110px; } .t10-rank { font-size: 9rem; } }
 
-  /* ── Poster card — only overlaps 25% of the number ── */
+  /* ── Poster card — overlaps only 10% of the number ──
+     rank + card + negative margin add up to exactly 100% of the item. */
   .t10-card {
     position: relative;
     z-index: 1;
-    /* Small negative margin = card only covers ~25% of the number */
-    margin-left: -18px;
+    margin-left: calc(var(--t10-rank-w) * var(--t10-hidden) * -1);
     display: block;
-    width: calc(100% - 74px);
+    width: calc(100% - var(--t10-rank-w) * (1 - var(--t10-hidden)));
     flex-shrink: 0;
     border-radius: 8px;
     overflow: hidden;

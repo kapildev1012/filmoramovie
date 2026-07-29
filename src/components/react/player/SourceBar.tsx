@@ -103,8 +103,15 @@ export default function SourceBar({
   const [sheetOpen, setSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const showEngines = available.length > 1;
+  const visibleEngines = compact ? available : available.filter((id) => id !== 'youtube');
+  const showEngines = visibleEngines.length > 1;
   const showServers = engine === 'embed' && servers.length > 0;
+
+  useEffect(() => {
+    if (compact || engine !== 'youtube') return;
+    const fullTitleEngine = available.find((id) => id !== 'youtube');
+    if (fullTitleEngine) onEngine(fullTitleEngine);
+  }, [compact, engine, available, onEngine]);
 
   const close = useCallback(() => {
     setSheetOpen(false);
@@ -143,7 +150,7 @@ export default function SourceBar({
     >
       {showEngines && (
         <div className="fp-source-group" role="group" aria-label={t('fullTitle')}>
-          {available.map((id) => (
+          {visibleEngines.map((id) => (
             <button
               key={id}
               type="button"

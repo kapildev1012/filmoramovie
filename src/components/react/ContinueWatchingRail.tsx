@@ -27,12 +27,15 @@ interface RailItem {
  */
 export default function ContinueWatchingRail({ title = 'Continue Watching' }: { title?: string }) {
   const [items, setItems] = useState<RailItem[] | null>(null);
+  // Which store the rail ended up rendering — decides where "View all" goes.
+  const [source, setSource] = useState<'continue' | 'watchlist'>('continue');
 
   useEffect(() => {
     const load = () => {
       try {
         const cont = getContinueWatching();
         if (cont.length > 0) {
+          setSource('continue');
           setItems(
             cont.slice(0, 20).map((e: ContinueEntry) => ({
               id: e.id,
@@ -47,6 +50,7 @@ export default function ContinueWatchingRail({ title = 'Continue Watching' }: { 
         // Fallback: saved watchlist.
         const wl = JSON.parse(localStorage.getItem('filmora_watchlist') || '[]') as WatchItem[];
         const sorted = [...wl].sort((a, b) => (b.addedAt ?? '').localeCompare(a.addedAt ?? ''));
+        setSource('watchlist');
         setItems(sorted.slice(0, 20).map((it) => ({ ...it, sub: null })));
       } catch {
         setItems([]);
@@ -64,33 +68,51 @@ export default function ContinueWatchingRail({ title = 'Continue Watching' }: { 
       <div className="container">
         <div className="rail-header">
           <h2 className="rail-title">{title}</h2>
-          <a href="/watchlist" className="rail-view-all" aria-label="View all watchlist">
+          <a
+            href={source === 'continue' ? '/continue' : '/watchlist'}
+            className="rail-view-all"
+            aria-label={source === 'continue' ? 'View all continue watching' : 'View all watchlist'}
+          >
             View all
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
           </a>
         </div>
-        <div className="scroll-rail" role="list">
-          {items.map((it) => {
-            const href = it.mediaType === 'movie' ? `/movie/${it.id}#watch` : `/series/${it.id}#watch`;
-            return (
-              <div role="listitem" key={`${it.mediaType}-${it.id}`} className="cw-card">
-                <a href={href} className="cw-link" aria-label={`Resume ${it.title}`}>
-                  <div className="cw-img-wrap">
-                    {it.posterUrl ? (
-                      <img src={it.posterUrl} alt="" className="cw-img" loading="lazy" decoding="async" />
-                    ) : (
-                      <div className="cw-placeholder">{it.title}</div>
-                    )}
-                    <span className="cw-resume" aria-hidden="true">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                    </span>
-                    {it.sub && <span className="cw-sub">{it.sub}</span>}
-                  </div>
-                  <h3 className="cw-title">{it.title}</h3>
-                </a>
-              </div>
-            );
-          })}
+        <div className="cw-marquee">
+          {/* Two identical sequences make the left→right roll seamless. */}
+          <div className="cw-track" role="list" aria-hidden={false}>
+            {items.concat(items).map((it, i) => {
+              const href = it.mediaType === 'movie' ? `/movie/${it.id}#watch` : `/series/${it.id}#watch`;
+              const isClone = i >= items.length;
+              return (
+                <div
+                  role={isClone ? 'presentation' : 'listitem'}
+                  aria-hidden={isClone ? true : undefined}
+                  key={`${it.mediaType}-${it.id}-${i}`}
+                  className="cw-card"
+                >
+                  <a
+                    href={href}
+                    className="cw-link"
+                    aria-label={`Resume ${it.title}`}
+                    tabIndex={isClone ? -1 : undefined}
+                  >
+                    <div className="cw-img-wrap">
+                      {it.posterUrl ? (
+                        <img src={it.posterUrl} alt="" className="cw-img" loading="lazy" decoding="async" />
+                      ) : (
+                        <div className="cw-placeholder">{it.title}</div>
+                      )}
+                      <span className="cw-resume" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                      </span>
+                      {it.sub && <span className="cw-sub">{it.sub}</span>}
+                    </div>
+                    <h3 className="cw-title">{it.title}</h3>
+                  </a>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -100,6 +122,31 @@ export default function ContinueWatchingRail({ title = 'Continue Watching' }: { 
         .rail-title { font-size: var(--font-size-xl); font-weight:600; color:var(--color-text); letter-spacing:var(--letter-spacing-tight); margin:0; }
         .rail-view-all { display:inline-flex; align-items:center; gap:0.25rem; font-size:var(--font-size-sm); color:var(--color-text-3); text-decoration:none; white-space:nowrap; transition:color 150ms ease; }
         .rail-view-all:hover { color: var(--color-text); }
+
+        /* ─── Auto-rolling marquee (left → right) ─── */
+        .cw-marquee {
+          overflow: hidden;
+          /* Soft fade on both edges so cards ease in/out of view. */
+          -webkit-mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+          mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+        }
+        .cw-track {
+          display: flex;
+          gap: 1rem;
+          width: max-content;
+          /* Slide one full sequence to the left → cards travel right→left. */
+          animation: cw-roll 45s linear infinite;
+          will-change: transform;
+        }
+        .cw-marquee:hover .cw-track { animation-play-state: paused; }
+        @keyframes cw-roll {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cw-track { animation: none; transform: none; }
+        }
+
         .cw-card { flex-shrink:0; width:160px; }
         .cw-link { display:block; text-decoration:none; color:inherit; }
         .cw-img-wrap {

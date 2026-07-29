@@ -55,6 +55,7 @@ export interface ServerQuality {
  * renditions for different titles; option 1 is a usable approximation.
  */
 export const SERVER_QUALITY: Readonly<Record<string, ServerQuality>> = {
+  vidsrcin: { maxHeight: null, bitrateKbps: null },
   nexstream: { maxHeight: null, bitrateKbps: null },
   vidlink: { maxHeight: null, bitrateKbps: null },
   videasy: { maxHeight: null, bitrateKbps: null },
@@ -85,10 +86,11 @@ export function qualityFor(id: string): ServerQuality {
 // Unknown ids fall to PREFERENCE_MAX so a provider we have not vetted never
 // outranks a vetted one just by being unlisted.
 export const PROVIDER_PREFERENCE: Readonly<Record<string, number>> = {
-  vidlink: 0,
-  vidfast: 1,
-  videasy: 2,
-  nexstream: 3,
+  vidsrcin: 0,
+  vidlink: 1,
+  vidfast: 2,
+  videasy: 3,
+  nexstream: 4,
 };
 
 const PREFERENCE_MAX = 99;

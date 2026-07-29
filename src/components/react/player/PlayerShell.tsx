@@ -739,8 +739,25 @@ export default function PlayerShell({
           </div>
         )}
 
+        {/* Embed providers keep their own playback chrome fully interactive.
+            This pointer-transparent wrapper contributes only one centered
+            fullscreen/minimize button; server selection remains below stage. */}
+        {started && !hasError && engine === 'embed' && (
+          <div className="fp-embed-screen-control">
+            <button
+              type="button"
+              className="fp-embed-screen-btn"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+              title={`${isFullscreen ? t('exitFullscreen') : t('fullscreen')} (F)`}
+            >
+              {isFullscreen ? <ExitFullscreenIcon size={22} /> : <FullscreenIcon size={22} />}
+            </button>
+          </div>
+        )}
+
         {/* Top bar: back + title. Hidden with the controls. */}
-        {started && (
+        {started && engine !== 'embed' && (
           <div
             className="fp-topbar"
             onPointerEnter={(event) => {
@@ -789,7 +806,7 @@ export default function PlayerShell({
         {ended && endCard}
 
         {/* ── Control bar ── */}
-        {started && !hasError && (
+        {started && !hasError && engine !== 'embed' && (
           <div
             ref={controlsRef}
             className="fp-controls"

@@ -242,10 +242,17 @@
     ) !important;
   }
 
-  /* Content: full width, balanced padding, clears the floating bottom bar */
+  /* Content: full width, balanced padding. The control strip below it owns the
+     bottom-bar clearance, so the copy only needs to clear the strip. */
+  .nf-content-wrap {
+    padding: 0 1.25rem 0.75rem !important;
+  }
   .nf-content {
-    padding: 0 1.25rem calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 2rem) !important;
     max-width: 100% !important;
+  }
+  /* Single-slide heroes (detail pages) render no strip — clear the bar here */
+  .nf-hero--single .nf-content-wrap {
+    padding-bottom: calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 1.5rem) !important;
   }
 
   /* Title: slightly smaller on narrow screens */
@@ -284,9 +291,10 @@
     padding: 0 !important;
   }
 
-  /* Bottom strip: dots only (arrows hidden via existing rule) */
+  /* Bottom strip: progress dots only, lifted above the floating tab bar */
   .nf-strip {
-    padding: 0.5rem 1.25rem 1rem !important;
+    justify-content: center !important;
+    padding: 0 1.25rem calc(var(--mob-tab-h) + env(safe-area-inset-bottom, 0px) + 1rem) !important;
     gap: 0.5rem !important;
   }
 

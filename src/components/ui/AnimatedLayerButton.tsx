@@ -40,7 +40,7 @@ const AnimatedLayerButton = React.forwardRef<
       {/* Background animation layer */}
       <svg
         className={cn(
-          "absolute h-auto transition-all duration-300 ease-in-out group-hover:left-0 group-hover:w-full",
+          "pointer-events-none absolute h-auto transition-all duration-300 ease-in-out group-hover:left-0 group-hover:w-full",
           "w-[60px] -left-[30px]",
           "animate-[spin_5s_linear_infinite]",
         )}
