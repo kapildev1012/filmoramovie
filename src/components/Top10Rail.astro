@@ -140,7 +140,7 @@ const top10 = items.slice(0, 10);
     to   { transform: translateX(-50%); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .t10-track { animation: none; transform: none; }
+    /* Intentionally removed to ensure marquee rolls on mobile as requested */
   }
 
   /* ── Each item — fixed width so the marquee track can overflow ──
@@ -157,27 +157,26 @@ const top10 = items.slice(0, 10);
     transition: opacity 0.3s ease;
   }
 
-  /* ── Mobile: native scroll — bigger cards, 75% number visible ── */
+  /* ── Mobile: auto-rolling marquee (like Continue Watching) — bigger cards,
+     75% number visible. The track keeps the desktop `t10-roll` animation and
+     `width: max-content` so the row rolls itself continuously instead of
+     waiting for the user to swipe. ── */
   @media (max-width: 767px) {
     .t10-header {
       padding-left: 0;
       padding-right: 0;
     }
+    /* Hidden overflow + soft edge fade so cards ease in/out as they roll. */
     .t10-viewport {
-      overflow-x: auto !important;
-      overflow-y: visible;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      scroll-snap-type: x mandatory;
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 5%, #000 95%, transparent);
+      mask-image: linear-gradient(to right, transparent, #000 5%, #000 95%, transparent);
     }
-    .t10-viewport::-webkit-scrollbar { display: none; }
 
     .t10-track {
-      overflow: visible !important;
-      width: auto !important;
-      animation: none !important;
-      transform: none !important;
-      padding-left: 0;
+      /* animation (t10-roll) + width:max-content inherited from the base rule —
+         keep them so the marquee rolls on phones too. */
+      padding-left: 0.25rem;
       padding-right: 0;
       padding-top: 1.25rem;
       padding-bottom: 1rem;
@@ -187,8 +186,8 @@ const top10 = items.slice(0, 10);
     /* Each item: ~2 visible + peek of 3rd */
     .t10-item {
       flex: 0 0 calc(100vw / 2.2) !important;
+      width: calc(100vw / 2.2) !important;
       min-width: calc(100vw / 2.2) !important;
-      scroll-snap-align: start;
     }
 
     .t10-title { font-size: 0.9375rem !important; }

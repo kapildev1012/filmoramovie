@@ -140,14 +140,7 @@ export default function SourceBar({
   };
 
   return (
-    <div
-      className="fp-sourcebar"
-      // ISOLATION: the switcher lives outside the stage, so it does its own
-      // containment — a server pill must not also reach a page-level click
-      // delegate sitting above it in the DOM.
-      onClick={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
+    <div className="fp-sourcebar">
       {showEngines && (
         <div className="fp-source-group fp-source-group-engines" role="group" aria-label={t('fullTitle')}>
           {visibleEngines.map((id) => (
@@ -185,12 +178,11 @@ export default function SourceBar({
           )}
 
           {compact ? (
-            <>
+            <div className="flex flex-col gap-2 w-full">
               <button
                 ref={triggerRef}
                 type="button"
-                className="fp-pill fp-server-trigger is-active"
-                aria-haspopup="dialog"
+                className="fp-pill fp-server-trigger is-active w-fit"
                 aria-expanded={sheetOpen}
                 onClick={() => setSheetOpen((open) => !open)}
               >
@@ -202,64 +194,39 @@ export default function SourceBar({
                   <span className="fp-quality-badge">{active.qualityLabel}</span>
                 )}
                 {isAuto && <span className="fp-server-trigger-auto">{t('auto')}</span>}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`pointer-events-none ml-1 transition-transform ${sheetOpen ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6"/></svg>
               </button>
 
               {sheetOpen && (
-                <>
-                  <button
-                    type="button"
-                    className="fp-sheet-backdrop"
-                    aria-label={t('close')}
-                    onClick={close}
-                  />
-                  <div className="fp-server-sheet" role="dialog" aria-label={t('chooseServer')}>
-                    <div className="fp-server-sheet-head">
-                      <h3 className="fp-menu-title">{t('chooseServer')}</h3>
-                      <button
-                        type="button"
-                        className="fp-btn fp-btn-sm"
-                        onClick={close}
-                        aria-label={t('close')}
-                      >
-                        <CloseIcon size={18} />
-                      </button>
-                    </div>
-                    <ul className="fp-server-list" role="menu">
-                      {servers.map((server) => (
-                        <li key={server.id}>
-                          <button
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={activeServer === server.id}
-                            className={`fp-server-row${activeServer === server.id ? ' is-active' : ''}${server.failed ? ' is-failed' : ''}`}
-                            onClick={() => pick(server.id)}
-                          >
-                            <span className="fp-menu-check" aria-hidden="true">
-                              {activeServer === server.id && <CheckIcon size={16} />}
-                            </span>
-                            <span className="fp-server-row-text">
-                              <span className="fp-server-row-name">
-                                {server.name}
-                                {(server.verified || server.live) && (
-                                  <span className="fp-pill-dot" aria-hidden="true" />
-                                )}
-                              </span>
-                              <span className="fp-server-row-meta">{describe(server)}</span>
-                            </span>
-                            {server.qualityLabel && (
-                              <span className="fp-quality-badge">{server.qualityLabel}</span>
-                            )}
-                            {recommended === server.id && (
-                              <span className="fp-quality-badge is-best">{t('bestQuality')}</span>
-                            )}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </>
+                <div className="flex flex-wrap gap-2 w-full animate-in fade-in slide-in-from-top-1">
+                  {servers.map((server) => (
+                    <button
+                      key={server.id}
+                      type="button"
+                      className={`fp-pill${activeServer === server.id ? ' is-active' : ''}${server.failed ? ' is-failed' : ''}`}
+                      aria-pressed={activeServer === server.id}
+                      onClick={() => pick(server.id)}
+                      title={
+                        recommended === server.id
+                          ? `${describe(server)} · ${t('bestQuality')}`
+                          : describe(server)
+                      }
+                    >
+                      {(server.verified || server.live) && (
+                        <span className="fp-pill-dot" aria-hidden="true" />
+                      )}
+                      {server.name}
+                      {server.qualityLabel && (
+                        <span className="fp-quality-badge">{server.qualityLabel}</span>
+                      )}
+                      {recommended === server.id && isAuto && (
+                        <span className="fp-quality-badge is-best">{t('bestQuality')}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               )}
-            </>
+            </div>
           ) : (
             servers.map((server) => (
               <button

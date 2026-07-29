@@ -316,6 +316,7 @@ export default function InstantSearch({
             </svg>
           </button>
         )}
+        <button type="button" className="is-search-btn" onClick={() => inputRef.current?.focus()}>Search</button>
       </div>
       </div>
 
@@ -418,7 +419,6 @@ export default function InstantSearch({
                 </div>
               </>
             )}
-            <Chips label="Popular searches" items={popularQueries.slice(0, 6)} onPick={pick} />
           </div>
         )}
 
@@ -448,8 +448,6 @@ export default function InstantSearch({
                 </div>
               </div>
             )}
-
-            <Chips label="Popular searches" items={popularQueries} onPick={pick} />
 
             {recommended.movies.length > 0 && (
               <Section title="Trending movies this week">
@@ -492,13 +490,13 @@ export default function InstantSearch({
         .is-input {
           flex: 1; min-width: 0;
           height: 42px;
-          padding: 0 2.75rem 0 2.75rem;
+          padding: 0 5.75rem 0 2.75rem;
           background: none; border: 0; outline: none;
           color: var(--color-text);
           font-family: inherit; font-size: 0.9375rem;
         }
         .is-input::placeholder { color: var(--color-text-3); }
-        .is-clear, .is-spinner { position: absolute; right: 0.875rem; }
+        .is-clear, .is-spinner { position: absolute; right: 4.5rem; }
         .is-clear {
           display: inline-flex; align-items: center; justify-content: center;
           width: 26px; height: 26px; border-radius: 50%;
@@ -513,6 +511,16 @@ export default function InstantSearch({
           animation: is-spin 0.7s linear infinite;
         }
         @keyframes is-spin { to { transform: rotate(360deg); } }
+
+        .is-search-btn {
+          position: absolute; right: 0.375rem;
+          background: linear-gradient(135deg, var(--color-accent-from), var(--color-accent-to));
+          color: #fff; border: 0; padding: 0.35rem 0.85rem; border-radius: 999px;
+          font-size: 0.75rem; font-weight: 700; text-transform: uppercase; cursor: pointer;
+          transition: opacity 150ms ease, transform 150ms ease;
+        }
+        .is-search-btn:hover { opacity: 0.9; transform: scale(1.05); }
+        .is-search-btn:active { transform: scale(0.95); }
 
         /* Tabs */
         .is-tabs {
@@ -552,75 +560,35 @@ export default function InstantSearch({
         }
         .is-section-more:hover { text-decoration: underline; }
 
+        /* Grid — same tracks and rhythm as the /series and /movies browse grids
+           so a search result is visually indistinguishable from a browse card. */
         .is-grid {
-          display: grid; gap: 1.25rem;
-          grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          column-gap: 1.5rem;
+          row-gap: 2rem;
+        }
+        @media (min-width: 640px) {
+          .is-grid {
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            column-gap: 1.75rem;
+            row-gap: 2.25rem;
+          }
+        }
+        @media (min-width: 1024px) {
+          .is-grid {
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            column-gap: 2rem;
+            row-gap: 2.5rem;
+          }
         }
         .is-skel {
-          aspect-ratio: 2/3; border-radius: var(--radius-lg, 0.75rem);
+          aspect-ratio: 7/12; border-radius: var(--radius-lg, 0.75rem);
           background: linear-gradient(100deg, var(--color-surface) 20%, var(--color-surface-2) 40%, var(--color-surface) 60%);
           background-size: 220% 100%;
           animation: is-shimmer 1.2s ease-in-out infinite;
         }
         @keyframes is-shimmer { to { background-position: -180% 0; } }
-
-        /* Card */
-        .is-card { position: relative; }
-        .is-card-media {
-          position: relative; display: block;
-          aspect-ratio: 2/3; overflow: hidden;
-          border-radius: var(--radius-lg, 0.75rem);
-          background: var(--color-surface-2);
-          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-          transition: transform 240ms var(--ease-out-fast, ease), box-shadow 240ms ease;
-        }
-        .is-card:hover .is-card-media {
-          transform: translateY(-6px);
-          box-shadow: 0 20px 44px rgba(0,0,0,0.55), 0 0 28px rgba(161,66,244,0.26);
-        }
-        .is-card-media:focus-visible { outline: 2px solid var(--color-accent-from); outline-offset: 3px; }
-        .is-card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .is-card-fallback {
-          width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-          color: var(--color-text-3); font-size: var(--font-size-xs, 0.75rem); padding: 0.75rem; text-align: center;
-        }
-        .is-card-rating {
-          position: absolute; top: 0.5rem; left: 0.5rem;
-          display: inline-flex; align-items: center; gap: 0.25rem;
-          font-size: 0.7rem; font-weight: 700; color: #fff;
-          background: rgba(0,0,0,0.6); padding: 0.15rem 0.4rem;
-          border-radius: var(--radius-sm, 0.25rem);
-          backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-        }
-        .is-card-type {
-          position: absolute; top: 0.5rem; right: 0.5rem;
-          font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
-          color: #fff; background: rgba(0,0,0,0.6);
-          border: 1px solid rgba(255,255,255,0.2);
-          padding: 0.15rem 0.4rem; border-radius: var(--radius-sm, 0.25rem);
-          backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-        }
-        .is-card-fav {
-          position: absolute; bottom: 0.5rem; right: 0.5rem;
-          width: 34px; height: 34px; border-radius: 50%;
-          display: inline-flex; align-items: center; justify-content: center;
-          border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.45);
-          color: #fff; cursor: pointer; opacity: 0; z-index: 2;
-          backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-          transition: opacity 180ms ease, transform 160ms ease;
-        }
-        .is-card:hover .is-card-fav,
-        .is-card:focus-within .is-card-fav,
-        .is-card-fav--on { opacity: 1; }
-        .is-card-fav:hover { transform: scale(1.1); }
-        .is-card-fav--on { color: #ff4d6d; border-color: #ff4d6d; }
-        .is-card-fav--on svg { fill: #ff4d6d; }
-        .is-card-info { padding-top: 0.5rem; }
-        .is-card-title {
-          margin: 0; font-size: var(--font-size-sm, 0.875rem); font-weight: 500;
-          color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .is-card-year { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-3); }
 
         /* People */
         .is-people { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
@@ -649,7 +617,8 @@ export default function InstantSearch({
           margin: 0; font-size: var(--font-size-xs, 0.75rem); font-weight: 600;
           text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-3);
         }
-        .is-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .is-chips { display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow-x: auto; scrollbar-width: none; padding-bottom: 0.25rem; -webkit-overflow-scrolling: touch; }
+        .is-chips::-webkit-scrollbar { display: none; }
         .is-chip {
           padding: 0.4rem 0.9rem; border-radius: var(--radius-full, 999px);
           border: 1px solid var(--color-border); background: transparent;
@@ -706,7 +675,13 @@ export default function InstantSearch({
             background: var(--color-border); opacity: 0.7;
           }
           .is-field { max-width: 100%; }
-          .is-input { height: 46px; font-size: 16px; }
+          /* The "Search" button is redundant on touch — typing is already
+             instant and tapping the field focuses it — so hide it and reclaim
+             the row. The input then only reserves room for the clear (×) /
+             spinner, which move flush to the right edge. */
+          .is-search-btn { display: none; }
+          .is-input { height: 46px; font-size: 16px; padding-right: 2.75rem; }
+          .is-clear, .is-spinner { right: 0.75rem; }
 
           /* Tabs: momentum scroll and roomier 40px targets; a small edge inset so
              the first and last pill are not flush against the screen edge. */
@@ -718,25 +693,25 @@ export default function InstantSearch({
           }
           .is-tab { padding: 0.55rem 0.95rem; }
 
-          .is-grid { grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+          /* Phones: a fixed 3-up grid (2-up on the narrowest devices), matching
+             the /series and /movies browse grids. */
+          .is-grid {
+            grid-template-columns: repeat(3, 1fr);
+            column-gap: 0.75rem;
+            row-gap: 1.5rem;
+          }
           .is-people { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 0.75rem; }
           .is-person-img { width: 68px; height: 68px; }
           .is-section { margin-bottom: 2rem; }
           .is-section-head { margin-bottom: 0.75rem; }
 
-          /* No hover-lift on touch; keep the resting shadow. */
-          .is-card:hover .is-card-media { transform: none; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-          /* Favourite is always visible on touch and a larger tap target. */
-          .is-card-fav { opacity: 1; width: 36px; height: 36px; }
-
           /* Chips are the primary navigation on the idle screen — thumb-sized. */
           .is-chip { padding: 0.55rem 1rem; }
         }
         @media (max-width: 380px) {
-          .is-grid { grid-template-columns: repeat(2, 1fr); }
+          .is-grid { grid-template-columns: repeat(2, 1fr); column-gap: 0.75rem; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .is-card-media, .is-card:hover .is-card-media { transition: none; transform: none; }
           .is-skel { animation: none; }
           .is-spinner { animation-duration: 2s; }
         }
@@ -783,14 +758,15 @@ function Grid({
   onToggleSave: (item: LiveItem) => void;
 }) {
   return (
-    <div className="is-grid">
+    <div className="is-grid poster-grid" role="list">
       {items.map((item) => (
-        <Card
-          key={`${item.mediaType}-${item.id}`}
-          item={item}
-          isSaved={saved.has(`${item.mediaType}-${item.id}`)}
-          onToggleSave={onToggleSave}
-        />
+        <div role="listitem" key={`${item.mediaType}-${item.id}`}>
+          <Card
+            item={item}
+            isSaved={saved.has(`${item.mediaType}-${item.id}`)}
+            onToggleSave={onToggleSave}
+          />
+        </div>
       ))}
     </div>
   );
@@ -806,39 +782,80 @@ function Card({
   onToggleSave: (item: LiveItem) => void;
 }) {
   const href = itemHref(item);
+  const label = `${item.title}${item.year ? ` (${item.year})` : ''}`;
+  // Same premium markup as PosterCard.astro (styles: src/styles/poster-card.css).
+  const quality = item.rating != null && item.rating >= 8 ? '4K' : 'HD';
   return (
-    <article className="is-card">
-      <a className="is-card-media" href={href} aria-label={`${item.title}${item.year ? ` (${item.year})` : ''}`}>
+    <article className="poster-card">
+      <div className="poster-card-img-wrap">
+        {/* Stretched cover link (whole card is clickable) */}
+        <a href={href} className="poster-card-cover" aria-label={label} />
+
         {item.posterPath ? (
           <img
-            className="is-card-img"
-            src={`${TMDB_IMG}/w342${item.posterPath}`}
+            src={`${TMDB_IMG}/w500${item.posterPath}`}
             alt=""
+            className="poster-card-img"
             loading="lazy"
             decoding="async"
-            width={342}
-            height={513}
+            width={500}
+            height={857}
           />
         ) : (
-          <span className="is-card-fallback">{item.title}</span>
+          <div className="poster-card-placeholder" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+              <circle cx="9" cy="9" r="2" />
+              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+            </svg>
+            <span className="poster-card-placeholder-text">{item.title}</span>
+          </div>
         )}
-        {item.rating != null && <span className="is-card-rating">★ {item.rating.toFixed(1)}</span>}
-        <span className="is-card-type">{item.mediaType === 'movie' ? 'Movie' : 'Series'}</span>
-      </a>
-      <button
-        type="button"
-        className={`is-card-fav ${isSaved ? 'is-card-fav--on' : ''}`}
-        onClick={() => onToggleSave(item)}
-        aria-pressed={isSaved}
-        aria-label={`${isSaved ? 'Remove' : 'Add'} ${item.title} ${isSaved ? 'from' : 'to'} watchlist`}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
-        </svg>
-      </button>
-      <div className="is-card-info">
-        <h3 className="is-card-title">{item.title}</h3>
-        {item.year && <span className="is-card-year">{item.year}</span>}
+
+        {/* Hover overlay with actions */}
+        <div className="poster-card-overlay">
+          <div className="poster-card-meta">
+            {item.year && <span className="pc-year">{item.year}</span>}
+            <span className={`pc-type ${item.mediaType === 'movie' ? 'pc-type--movie' : 'pc-type--tv'}`}>
+              {item.mediaType === 'movie' ? 'Movie' : 'Series'}
+            </span>
+          </div>
+          <div className="poster-card-actions">
+            <a href={href} className="pc-btn pc-btn--play" aria-label={`Play ${item.title}`}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+            </a>
+            <button
+              type="button"
+              className={`pc-btn pc-fav-live ${isSaved ? 'pc-fav-live--on' : ''}`}
+              onClick={() => onToggleSave(item)}
+              aria-pressed={isSaved}
+              aria-label={`${isSaved ? 'Remove' : 'Add'} ${item.title} ${isSaved ? 'from' : 'to'} watchlist`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+              </svg>
+            </button>
+            <a href={href} className="pc-btn pc-btn--info" aria-label={`Details for ${item.title}`}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Badges sit OUTSIDE the scaling wrap — they stay fixed during hover */}
+      <div className="poster-card-badges" aria-hidden="true">
+        {item.rating != null && item.rating > 0 && (
+          <span className="pc-imdb"><span className="pc-imdb-tag">IMDb</span>{item.rating.toFixed(1)}</span>
+        )}
+        <span className="pc-quality">{quality}</span>
+      </div>
+
+      <div className="poster-card-info">
+        <h3 className="poster-card-title">{item.title}</h3>
+        {item.year && <span className="poster-card-subtitle">{item.year}</span>}
       </div>
     </article>
   );

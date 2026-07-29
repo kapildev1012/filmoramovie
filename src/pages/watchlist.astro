@@ -399,6 +399,22 @@ function sortUrl(sort: string) {
     gap: 1.25rem;
   }
 
+  /* Phones: a fixed 3-up grid (2-up on the narrowest devices) matches the
+     movies, series, anime and search grids so poster cards and their edge
+     padding stay consistent across pages. */
+  @media (max-width: 639px) {
+    .watchlist-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem 0.75rem;
+    }
+  }
+  @media (max-width: 380px) {
+    .watchlist-grid {
+      grid-template-columns: repeat(2, 1fr);
+      column-gap: 0.75rem;
+    }
+  }
+
   @media (min-width: 640px) {
     .watchlist-grid {
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

@@ -16,8 +16,9 @@
 //   • A few providers volunteer progress telemetry ({currentTime, duration}).
 //     When one does, `caps.time` flips on and a READ-ONLY progress bar appears.
 //     Seeking stays impossible, so `caps.seek` remains false.
-//   • A frame that never fires `load` is treated as a network failure so the
-//     shell can fail over to another server.
+//   • A frame that neither fires `load` NOR posts a message is treated as a
+//     network failure so the shell can fail over to another server. Either signal
+//     alone is enough to call it alive — some providers only ever send one.
 //
 // The iframe is deliberately NOT sandboxed: these providers detect the sandbox
 // attribute and refuse to run.
@@ -30,9 +31,9 @@ import {
   type SnapshotSink,
 } from '../types';
 
-/** No `load` event by then ⇒ the provider is not going to render. Kept short so
- *  the automatic server failover (see WatchNow) moves on quickly instead of
- *  leaving the viewer on a dead frame. */
+/** Neither a `load` event nor a postMessage by then ⇒ the provider is not going
+ *  to render. Kept short so the automatic server failover (see WatchNow) moves on
+ *  quickly instead of leaving the viewer on a dead frame. */
 const LOAD_TIMEOUT_MS = 9000;
 
 /**
@@ -141,6 +142,8 @@ export class EmbedAdapter implements PlayerAdapter {
   mount(host: HTMLElement, source: PlayerSource, sink: SnapshotSink): void {
     if (source.engine !== 'embed') return;
     this.sink = sink;
+    // Per-mount state: a remount is a fresh frame that has proven nothing yet.
+    this.frameResponded = false;
     sink({ status: 'loading', error: null });
 
     const frame = document.createElement('iframe');
@@ -172,6 +175,9 @@ export class EmbedAdapter implements PlayerAdapter {
 
     this.loadTimer = window.setTimeout(() => {
       if (this.destroyed) return;
+      // The frame already talked to us — it is alive regardless of `load`. Firing
+      // the failover here would drop the viewer off a stream that is playing.
+      if (this.frameResponded) return;
       sink({
         status: 'error',
         error: {
@@ -187,6 +193,15 @@ export class EmbedAdapter implements PlayerAdapter {
       if (!win || event.source !== win) return;
       if (!this.frameResponded) {
         this.frameResponded = true;
+        // PROOF OF LIFE — CANCELS THE LOAD TIMEOUT.
+        // Not every provider fires `load` on its frame: vidsrc.in (Server 1, the
+        // default automatic pick) posts its first message in under a second and
+        // never fires `load` at all. Clearing the timer only in the `load`
+        // handler meant that frame was declared "did not respond" 9s in and the
+        // shell failed over off a stream that was playing fine. A message from
+        // the frame is strictly stronger evidence than `load`, so it cancels the
+        // timeout too.
+        window.clearTimeout(this.loadTimer);
         sink({ live: true, status: 'playing', error: null });
         // The provider's own player just came alive — re-assert the viewer's
         // volume now that there is something listening, so it is not left muted.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { HeroSlide } from '../../lib/tmdb';
-import { InteractiveHoverButton } from '../ui/interactive-hover-button';
+import { OriginButton } from '../ui/origin-button';
 
 const SLIDE_MS = 3000; // 3 seconds per slide
 const MAX_GENRES = 3;  // keep the chip row on a single line
@@ -197,14 +197,17 @@ export default function HeroCarousel({ slides, label }: Props) {
           {/* Primary action + watchlist. The animated control is intentionally
               the only navigation CTA: the old desktop “More Info” button led to
               the same place and read like a duplicate trailer action. */}
-          <div className="nf-actions">
-            <InteractiveHoverButton
-              type="button"
-              text="Watch Now"
+          <div className="nf-actions flex flex-row gap-3 mt-4 items-center w-full max-w-[500px]">
+            <OriginButton
               onClick={() => { window.location.href = slide.href; }}
-              className="nf-ihb"
+              className="flex-1 md:flex-none md:w-[240px] h-[52px] md:h-[55px] rounded-full !bg-black/60 backdrop-blur-3xl !border !border-white/20 text-white shadow-[0_0_15px_rgba(0,0,0,0.5)]"
               aria-label={`Watch ${slide.title} now`}
-            />
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M6 4.75a.75.75 0 0 1 1.18-.61l12 7.25a.75.75 0 0 1 0 1.22l-12 7.25A.75.75 0 0 1 6 19.25V4.75z" />
+              </svg>
+              <span>Watch Now</span>
+            </OriginButton>
             <WatchlistBtn id={slide.id} mediaType={slide.mediaType} title={slide.title} posterUrl={slide.posterUrl} />
           </div>
         </div>
@@ -368,9 +371,9 @@ export default function HeroCarousel({ slides, label }: Props) {
             background: linear-gradient(
               to top,
               #000 0%,
-              rgba(0,0,0,0.94) 24%,
-              rgba(0,0,0,0.6) 50%,
-              rgba(0,0,0,0.15) 78%,
+              rgba(0,0,0,0.96) 28%,
+              rgba(0,0,0,0.75) 55%,
+              rgba(0,0,0,0.2) 82%,
               transparent 100%
             );
           }
@@ -418,7 +421,7 @@ export default function HeroCarousel({ slides, label }: Props) {
         /* Title — capped at two lines so a long name can't push the copy block
            past the top of the hero. */
         .nf-title {
-          font-size: clamp(2rem, 4.5vw, 3.75rem);
+          font-size: clamp(2.25rem, 4.5vw, 3.75rem);
           font-weight: 700;
           line-height: 1.05;
           letter-spacing: -0.025em;
@@ -429,11 +432,20 @@ export default function HeroCarousel({ slides, label }: Props) {
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+          animation: nf-fade-up 0.5s ease backwards; animation-delay: 80ms;
+        }
+
+        .nf-overview {
+          font-size: 1.1rem; line-height: 1.45;
+          color: rgba(255,255,255,0.85); margin: 0 0 1.25rem;
+          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+          text-shadow: 0 1px 8px rgba(0,0,0,0.8);
           animation: nf-fade-up 0.5s ease backwards; animation-delay: 100ms;
         }
         @media (max-width: 767px) {
-          .nf-title { font-size: clamp(1.75rem, 7vw, 2.5rem); }
-          .nf-meta { justify-content: center; gap: 0.4rem; margin-bottom: 0.5rem; }
+          .nf-meta { justify-content: center; }
+          .nf-title { font-size: clamp(2.15rem, 8vw, 2.75rem); margin-bottom: 0.5rem; text-align: center; }
+          .nf-overview { font-size: 0.95rem; margin-bottom: 1.25rem; text-align: center; max-width: 90%; margin-inline: auto; -webkit-line-clamp: 4; }
         }
 
         /* Genres */
@@ -670,17 +682,19 @@ function WatchlistBtn({ id, mediaType, title, posterUrl }: {
   };
 
   return (
-    <button
-      className={`nf-btn nf-btn--wl ${saved ? 'nf-btn--wl--saved' : ''}`}
+    <OriginButton
       onClick={toggle}
+      className={`shrink-0 h-[52px] w-[52px] md:h-[55px] md:w-[55px] rounded-full backdrop-blur-2xl text-white ${saved ? 'bg-white/20 border-white/40' : 'bg-black/30 border-white/10'}`}
+      style={{ paddingLeft: 0, paddingRight: 0 }}
       aria-pressed={saved}
       aria-label={saved ? `Remove ${title} from watchlist` : `Add ${title} to watchlist`}
       title={saved ? 'Remove from Watchlist' : 'Add to Watchlist'}
     >
-      {saved
-        ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      }
-    </button>
+      {saved ? (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+      ) : (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+      )}
+    </OriginButton>
   );
 }

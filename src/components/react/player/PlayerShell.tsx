@@ -46,10 +46,10 @@ import {
 } from 'react';
 import type { PlayerApi } from './usePlayer';
 import { SKIP_SECONDS } from './usePlayer';
+import { BRIGHTNESS_MAX, BRIGHTNESS_MIN } from '../../../lib/player/prefs';
 import type { TimeMarker } from '../../../lib/player/types';
 import { formatTime } from '../../../lib/player/format';
 import type { PlayerT } from '../../../lib/player/strings';
-import { BRIGHTNESS_MAX, BRIGHTNESS_MIN } from '../../../lib/player/prefs';
 import SeekBar from './SeekBar';
 import VolumeControl from './VolumeControl';
 import Popover from './Popover';
@@ -93,6 +93,12 @@ type Zone = 'left' | 'centre' | 'right';
 const DOUBLE_TAP_MS = 300;
 /** Lifetime of the ±10s ripple. Must match the CSS animation duration. */
 const RIPPLE_MS = 520;
+/**
+ * How long the embed fullscreen/minimize button stays on screen after any
+ * reveal. Matches usePlayer's IDLE_MS so the provider frame's one piece of
+ * Filmora chrome behaves like the chrome on our own engines.
+ */
+const SCREEN_CTL_MS = 1000;
 
 export interface PlayerShellProps {
   api: PlayerApi;
@@ -437,7 +443,7 @@ export default function PlayerShell({
 
   // ── Derived UI state ──────────────────────────────────────────────────────
   const isPlaying = snapshot.status === 'playing';
-  const isBuffering = snapshot.status === 'buffering' || (started && snapshot.status === 'loading');
+  const isBuffering = engine !== 'embed' && (snapshot.status === 'buffering' || (started && snapshot.status === 'loading'));
   const hasError = snapshot.status === 'error' && !!snapshot.error;
   const ended = snapshot.status === 'ended';
   const showSeekBar = caps.time && snapshot.duration > 0;
@@ -466,13 +472,32 @@ export default function PlayerShell({
     }
   }, [snapshot.error?.kind, offline, t]);
 
-  const surfaceStyle = useMemo(
-    () => ({
-      filter: `brightness(${prefs.brightness})`,
-      transform: `scale(${prefs.zoom})`,
-    }),
-    [prefs.brightness, prefs.zoom]
-  );
+  const surfaceStyle = useMemo(() => {
+    const base = { filter: `brightness(${prefs.brightness})` };
+    // Native <video> (html5): a GPU-accelerated transform crop-zooms cleanly.
+    //
+    // Every other engine renders a cross-origin <iframe> — the YouTube player
+    // (reachable via the settings menu, e.g. on trailers) and the third-party
+    // embed providers. WebKit/iOS (and some Chromium builds) frequently fail to
+    // repaint or scale a *transformed* cross-origin frame, so `transform:
+    // scale()` on the surface left the picture unchanged and the zoom buttons
+    // "did nothing" — most visibly on mobile. For those engines we crop-zoom
+    // instead by enlarging the frame past the stage and re-centring it; the
+    // stage's `overflow: hidden` does the actual cropping. (left/top override
+    // the CSS `inset:0`; with width/height also set, the now-redundant
+    // right/bottom from that inset are ignored per the box model.)
+    if (engine !== 'html5') {
+      const overflowPct = (prefs.zoom - 1) * 50; // half the overflow, per side
+      return {
+        ...base,
+        width: `${prefs.zoom * 100}%`,
+        height: `${prefs.zoom * 100}%`,
+        left: `-${overflowPct}%`,
+        top: `-${overflowPct}%`,
+      };
+    }
+    return { ...base, transform: `scale(${prefs.zoom})` };
+  }, [prefs.brightness, prefs.zoom, engine]);
 
   const stageClass = [
     'fp-stage',
@@ -518,6 +543,67 @@ export default function PlayerShell({
     event.stopPropagation();
   }, []);
 
+  /**
+   * THE EMBED FULLSCREEN/MINIMIZE BUTTON'S OWN 1-SECOND LIFE.
+   *
+   * It cannot ride on `controlsVisible` like the rest of the chrome, because the
+   * signals that keep that alive do not survive a cross-origin iframe:
+   *
+   *   • `mousemove` raised inside the provider's frame never reaches this
+   *     document, so `wake()` stops being called the moment the cursor is over
+   *     the video — yet CSS `:hover` DOES cross the boundary (the parent sees the
+   *     <iframe> element as hovered). Keying the button off `:hover` therefore
+   *     pinned it on screen for as long as the cursor sat anywhere on the stage.
+   *   • On a touch screen there is no hover at all, so the old rule just forced
+   *     it permanently visible at `opacity: .72`.
+   *
+   * So visibility is owned here: any reveal starts a 1s countdown and the button
+   * goes away when it expires, whatever the pointer is doing. A cursor resting on
+   * the button itself (or keyboard focus) holds it open — a control that vanishes
+   * from under the hand reaching for it is the bug, not the feature.
+   */
+  const [screenCtlVisible, setScreenCtlVisible] = useState(false);
+  const screenCtlTimer = useRef<number | undefined>(undefined);
+  const screenCtlHeld = useRef(false);
+
+  const revealScreenCtl = useCallback(() => {
+    setScreenCtlVisible(true);
+    window.clearTimeout(screenCtlTimer.current);
+    if (screenCtlHeld.current) return;
+    screenCtlTimer.current = window.setTimeout(
+      () => setScreenCtlVisible(false),
+      SCREEN_CTL_MS
+    );
+  }, []);
+
+  /** Pointer resting on / focus inside the button: suspend the countdown. */
+  const holdScreenCtl = useCallback(
+    (held: boolean) => {
+      screenCtlHeld.current = held;
+      if (held) {
+        window.clearTimeout(screenCtlTimer.current);
+        setScreenCtlVisible(true);
+      } else {
+        revealScreenCtl();
+      }
+    },
+    [revealScreenCtl]
+  );
+
+  const embedScreenCtl = started && !hasError && engine === 'embed';
+
+  // Playback just started on a provider frame: show the control once, then let
+  // it fall away like any other reveal.
+  useEffect(() => {
+    if (!embedScreenCtl) {
+      setScreenCtlVisible(false);
+      window.clearTimeout(screenCtlTimer.current);
+      return;
+    }
+    revealScreenCtl();
+    return () => window.clearTimeout(screenCtlTimer.current);
+  }, [embedScreenCtl, revealScreenCtl]);
+
   return (
     <div className="fp-root">
       <div
@@ -529,7 +615,12 @@ export default function PlayerShell({
         onMouseMove={(event) => {
           trackPointerHold(event);
           wake();
+          revealScreenCtl();
         }}
+        // `mousemove` dies at the provider frame's edge, but crossing INTO the
+        // stage is still reported here (the parent owns the <iframe> element even
+        // though it cannot see inside it) — so this is the mouse's wake signal.
+        onMouseEnter={revealScreenCtl}
         // A cursor that leaves the stage (to another window, to the page below)
         // must release the hold even though no further move arrives inside it.
         onMouseLeave={() => {
@@ -547,25 +638,24 @@ export default function PlayerShell({
         {/* Engine surface. The adapter appends <video> / <iframe> here. */}
         <div ref={hostRef} className="fp-surface" style={surfaceStyle} />
 
-        {/* Pre-play splash. A button, so Enter/Space start playback and the
-            whole poster is one large touch target. */}
+        {/* Pre-play splash. The play control is a real button, so Enter/Space
+            start playback; the icon carries the whole meaning, so there is no
+            label text next to it (the accessible name lives on aria-label). */}
         {!started && !hasError && (
-          <button
-            type="button"
+          <div
             className="fp-splash"
-            onClick={onStart}
             style={splashImage ? { backgroundImage: `url(${splashImage})` } : undefined}
-            aria-label={`${t('play')} ${title}`}
           >
             <span className="fp-splash-scrim" aria-hidden="true" />
-            <span className="fp-splash-play" aria-hidden="true">
+            <button
+              type="button"
+              className="fp-splash-play"
+              onClick={onStart}
+              aria-label={`${t('play')} ${title}`}
+            >
               <PlayIcon size={30} />
-            </span>
-            <span className="fp-splash-text">
-              <span className="fp-splash-title">{title}</span>
-              {subtitle && <span className="fp-splash-sub">{subtitle}</span>}
-            </span>
-          </button>
+            </button>
+          </div>
         )}
 
         {/* Gesture / tap zones, only where WE own playback (html5 / youtube). On
@@ -742,18 +832,18 @@ export default function PlayerShell({
         {/* Embed providers keep their own playback chrome fully interactive.
             This pointer-transparent wrapper contributes only one centered
             fullscreen/minimize button; server selection remains below stage. */}
-        {started && !hasError && engine === 'embed' && (
-          <div className="fp-embed-screen-control">
-            <button
-              type="button"
-              className="fp-embed-screen-btn"
-              onClick={toggleFullscreen}
-              aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
-              title={`${isFullscreen ? t('exitFullscreen') : t('fullscreen')} (F)`}
-            >
-              {isFullscreen ? <ExitFullscreenIcon size={22} /> : <FullscreenIcon size={22} />}
-            </button>
-          </div>
+        {embedScreenCtl && (
+            <div className="fp-embed-screen-control is-visible">
+              <button
+                type="button"
+                className="fp-embed-screen-btn"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+                title={`${isFullscreen ? t('exitFullscreen') : t('fullscreen')} (F)`}
+              >
+                {isFullscreen ? <ExitFullscreenIcon size={22} /> : <FullscreenIcon size={22} />}
+              </button>
+            </div>
         )}
 
         {/* Top bar: back + title. Hidden with the controls. */}
@@ -978,7 +1068,7 @@ export default function PlayerShell({
                   <button
                     ref={episodesBtn}
                     type="button"
-                    className={`fp-btn${menu === 'episodes' ? ' is-open' : ''}`}
+                    className={`fp-btn fp-episodes-btn${menu === 'episodes' ? ' is-open' : ''}`}
                     onClick={() => {
                       episodeNav.onOpenEpisodes();
                       setMenu(menu === 'episodes' ? null : 'episodes');

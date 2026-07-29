@@ -722,15 +722,33 @@
   }
 
   /* ── Poster grid — clean, centered two-up layout ──
-     Exactly two columns, both cells equal (1fr). The gutter between the cards
-     equals the container's edge padding (--mob-pad-x), so the spacing between
-     the cards and each screen edge is symmetric. Cards fill their cell fully
-     (overriding the rail-oriented min/max-width) → identical dimensions. */
+     Exactly two columns, both cells equal. The gutter between the cards equals
+     the container's edge padding (--mob-pad-x), so the spacing between the cards
+     and each screen edge is symmetric. Cards fill their cell fully (overriding
+     the rail-oriented min/max-width) → identical dimensions.
+
+     `minmax(0, 1fr)`, NOT `1fr`. A bare `1fr` is `minmax(auto, 1fr)`, and that
+     `auto` floor resolves to the item's min-content width — which
+     .poster-card-title inflates, because it is `white-space: nowrap` and a title
+     like "Law & Order: Special Victims Unit" reports a 306px min-content even
+     though it is meant to ellipsis. The tracks then grew to fit the longest
+     title in each column: two unequal columns (234px / 321px), cards of
+     different heights (433px / 582px), and ~197px hanging off the side of a
+     390px screen. An explicit 0 floor lets the tracks stay equal.
+
+     The `> *` rule is the other half. The grid's children are the
+     `<div role="listitem">` wrappers, so clearing min-width on .poster-card
+     alone never reached them; as grid items they carry `min-width: auto`, which
+     is the same min-content floor one level out. At 0 the item finally takes its
+     track width and the title's `text-overflow: ellipsis` does its job. */
   .browse-page .poster-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: var(--mob-pad-x) !important;
     justify-items: stretch !important;
     align-items: start !important;
+  }
+  .browse-page .poster-grid > * {
+    min-width: 0 !important;
   }
   .browse-page .poster-grid .poster-card {
     min-width: 0 !important;
@@ -740,8 +758,11 @@
 
   /* Non-browse poster grids (e.g. search results) keep the compact 3-up. */
   .poster-grid {
-    grid-template-columns: repeat(3, 1fr) !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 0.625rem !important;
+  }
+  .poster-grid > * {
+    min-width: 0;
   }
 
   /* Pagination — compact, wraps, thumb-friendly */
@@ -923,13 +944,15 @@
    VERY SMALL SCREENS  (max-width: 400px) — 2-up poster grids
    ══════════════════════════════════════════════════════ */
 @media (max-width: 400px) {
+  /* minmax(0, …) for the same reason as the browse grid above: a bare 1fr lets
+     a nowrap card title push the track wider than the screen. */
   .poster-grid,
   .watchlist-grid,
   .people-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
   .cast-grid {
-    grid-template-columns: repeat(3, 1fr) !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 0.4rem !important;
   }
 }

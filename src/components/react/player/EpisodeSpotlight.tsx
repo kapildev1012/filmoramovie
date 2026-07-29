@@ -129,7 +129,7 @@ export default function EpisodeSpotlight({
           ~288px — a thumbnail next to a 30px title. Both columns use
           minmax(0, …) so a long overview shrinks instead of forcing the grid
           wider than the player. */}
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,44%)] lg:items-center lg:gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,48%)] xl:gap-10">
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,50%)] lg:items-center lg:gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,54%)] xl:gap-10">
         {/* Episode copy. Second on a phone: the still is the thing worth leading
             with when there is no room for both side by side. */}
         <div className="order-2 min-w-0 space-y-3 lg:order-none lg:space-y-5">
@@ -243,6 +243,31 @@ export default function EpisodeSpotlight({
               )}
             </motion.button>
           </AnimatePresence>
+
+          {/* Clickable prev/next buttons layered on the photo itself. They sit
+              above the play button (which fills the frame) so a click changes
+              the featured episode — and its still — instead of starting
+              playback. Hidden when there is only one episode. */}
+          {episodes.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                aria-label={t('prevEpisode')}
+                className="absolute left-2 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition-colors hover:bg-black/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white lg:h-11 lg:w-11"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => go(1)}
+                aria-label={t('nextEpisode')}
+                className="absolute right-2 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition-colors hover:bg-black/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white lg:h-11 lg:w-11"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -275,7 +300,7 @@ export default function EpisodeSpotlight({
                 className={`h-11 min-w-11 flex-none rounded-full px-3 text-sm font-semibold transition-all lg:h-9 lg:min-w-9 ${
                   on
                     ? 'text-white'
-                    : 'border border-border/60 bg-white/[0.03] text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                    : 'border border-border/60 bg-black text-muted-foreground hover:border-foreground/30 hover:text-foreground'
                 }`}
                 style={
                   on

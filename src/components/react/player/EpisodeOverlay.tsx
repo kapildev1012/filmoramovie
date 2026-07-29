@@ -6,11 +6,14 @@
 //                       closable with Escape or the close button.
 //   variant="inline"  — the same list below the player for browsing without
 //                       covering the video, which is what a discovery page wants.
-//                       This variant has three shapes: the spotlight hero
-//                       (EpisodeSpotlight) on phones and desktops, the list with
-//                       columns in between. A 24-row single-column list buries
-//                       the rest of the page on a 390px screen, so the phone gets
-//                       the hero — stacked, with the numbered strip as the picker.
+//                       This variant has three shapes: the 3D fanned stills
+//                       (EpisodeCircle) on phones, the container-query list with
+//                       real columns at tablet widths, and the editorial split
+//                       hero (EpisodeSpotlight) from 64rem up. A 24-row
+//                       single-column list buries the rest of the page on a
+//                       390px screen, so the phone gets the carousel — with a
+//                       numbered strip as the picker so episode 23 stays one tap
+//                       away.
 //
 // The current episode is marked with `aria-current` and scrolled into view when
 // the list opens, so a viewer 14 episodes deep does not land at the top.
@@ -18,6 +21,7 @@
 import { useEffect, useRef } from 'react';
 import { CloseIcon, PlayIcon } from './Icons';
 import EpisodeSpotlight from './EpisodeSpotlight';
+import EpisodeCircle from './EpisodeCircle';
 import type { PlayerT } from '../../../lib/player/strings';
 
 export interface SeasonOption {
@@ -153,20 +157,34 @@ export default function EpisodeOverlay({
         <p className="fp-episodes-empty">{t('noEpisodes')}</p>
       ) : (
         <>
-          {/* The spotlight hero: the phone presentation AND the >=64rem one.
-              Visibility is decided by media queries in player.css — a CSS swap
-              rather than a JS width check — so the correct presentation is right
-              on the first frame after hydration, not one render late. */}
+          {/* Three inline presentations, one per width, all in the DOM with
+              media queries in player.css picking one — a CSS swap rather than a
+              JS width check, so the right layout is there on the first frame
+              after hydration instead of one render late.
+                <40rem  → EpisodeCircle   (3D fanned stills)
+                40–64rem → the list below  (container query gives it columns)
+                >=64rem → EpisodeSpotlight (editorial split hero) */}
           {variant === 'inline' && (
-            <div className="fp-ep-spotlight-wrap">
-              <EpisodeSpotlight
-                episodes={episodes}
-                seasonNumber={activeSeason}
-                current={current}
-                onPlay={onPlay}
-                t={t}
-              />
-            </div>
+            <>
+              <div className="fp-ep-circle-wrap">
+                <EpisodeCircle
+                  episodes={episodes}
+                  seasonNumber={activeSeason}
+                  current={current}
+                  onPlay={onPlay}
+                  t={t}
+                />
+              </div>
+              <div className="fp-ep-spotlight-wrap">
+                <EpisodeSpotlight
+                  episodes={episodes}
+                  seasonNumber={activeSeason}
+                  current={current}
+                  onPlay={onPlay}
+                  t={t}
+                />
+              </div>
+            </>
           )}
 
           <ul
@@ -192,7 +210,10 @@ export default function EpisodeOverlay({
                         <span className="fp-episode-thumb-fallback" aria-hidden="true" />
                       )}
                       <span className="fp-episode-play" aria-hidden="true">
-                        <PlayIcon size={18} />
+                        <div className="flex flex-col items-center gap-1">
+                          <PlayIcon size={18} />
+                          <span className="text-[10px] font-bold tracking-widest uppercase text-white drop-shadow-md">Play</span>
+                        </div>
                       </span>
                     </span>
                     <span className="fp-episode-meta">

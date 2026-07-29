@@ -11,6 +11,9 @@ import CinematicGallery from '../components/CinematicGallery.astro';
 import FeaturedGallery from '../components/react/FeaturedGallery';
 import Testimonials from '../components/react/Testimonials';
 import '../styles/global.css';
+// Poster card (poster-card-* / pc-*) — shared by PosterCard.astro and the React
+// islands (instant search) so both render the exact same card.
+import '../styles/poster-card.css';
 // Player chrome (fp-*). Loaded after global.css so it can use the colour tokens,
 // and before mobile.css so page-level mobile overrides still win.
 import '../styles/player.css';
